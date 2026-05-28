@@ -1,57 +1,148 @@
-/* PixelLab v1.0
- * Phaser 3 + Socket.io | 반응형 PC + 모바일
- * Boot → Lab (관찰자 모드 기본, 모달로 출근 참여)
+/**
+ * PixelLab 프론트엔드 (game.js)
+ *
+ * Phaser 3 기반 픽셀 아트 실시간 멀티 출근 게임.
+ * 서버(server.js)와 Socket.io로 실시간 통신하며,
+ * 접속 즉시 연구실 화면을 보여준다 (관찰자 모드).
+ * 출근하기 버튼 → 닉네임 입력 모달 → 캐릭터 등장.
+ *
+ * 씬 흐름:
+ *   BootScene  →  LabScene
+ *   (소켓 연결)    (연구실 표시, 상태 동기화)
+ *
+ * Socket 이벤트 (수신):
+ *   state_sync  현재 접속자 전체 목록 배열 (모든 변경 시마다 수신)
+ *   lab_error   서버 오류 메시지 (예: 자리가 꽉 찼음)
+ *
+ * Socket 이벤트 (발신):
+ *   check_in    { name }   출근
+ *   check_out              퇴근
+ *   set_away               자리비움 전환
+ *   set_back               자리 복귀
+ *   send_message { message } 말풍선 (향후 기능)
+ *
+ * 반응형:
+ *   Phaser Scale.FIT + autoCenter로 PC·태블릿·모바일 모두 대응.
+ *   모바일은 가로 방향 권장 (세로는 화면이 작아짐).
  */
 'use strict';
 
-const W = 960, H = 640;
-const WALL_H = 168, UI_H = 64;
+// ─── 상수 ────────────────────────────────────────────────────────────────────
 
+/** 게임 캔버스 기준 해상도. Scale.FIT로 화면 크기에 맞게 자동 스케일됨. */
+const W = 960, H = 640;
+
+/** 벽 하단 y좌표 (바닥 시작점). */
+const WALL_H = 168;
+
+/** 하단 UI 바 높이. */
+const UI_H = 64;
+
+/**
+ * 6개 책상의 중심 좌표 (cx = 가로 중심, y = 책상 상단).
+ * 2행 × 3열 배치.
+ * MAX_DESKS(server.js)와 배열 크기를 반드시 맞출 것.
+ */
 const DESKS = [
   { x: 160, y: 280 }, { x: 480, y: 280 }, { x: 800, y: 280 },
   { x: 160, y: 462 }, { x: 480, y: 462 }, { x: 800, y: 462 },
 ];
+
+/** 책상 가로/세로 크기 (픽셀). */
 const DW = 186, DH = 54;
 
-// 컬러 팔레트
+/**
+ * 전체 컬러 팔레트.
+ * 연구실/UI/캐릭터에서 공통으로 사용.
+ * 16진수 값은 Phaser Graphics API, 문자열은 Phaser Text API에서 사용.
+ */
 const C = {
-  wallTop: 0x0c0b1e, wallMid: 0x14123a, wallBdr: 0x201e4e,
-  floor:   0x161528, floorLn: 0x1c1b36,
-  rug:     0x1d1c3c, rugBdr:  0x2a2858,
-  deskSurf:0x7c5c46, deskHi:  0x9c7860, deskSha: 0x543c28, deskLeg: 0x3c2a18,
-  mon: 0x0c0c1e, scr: 0x070d3e,
-  skin: 0xffcc99, blush: 0xff8888, eye: 0x1a1a2a,
-  chair: 0x1a1838, seat: 0x111128,
-  barBg: 0x080810,
-  btnIn:   0x4e4bcc, btnInH:  0x6e6bee,
-  btnOut:  0xbb3232, btnOutH: 0xdd4444,
-  btnAway: 0x553818, btnAwayA:0x7a5020,
-  tPri: '#e8e8ff', tMut: '#666699', tGrn: '#33cc88', tYel: '#ffdd44',
+  // 연구실 배경
+  wallTop: 0x0c0b1e, // 벽 상단 (더 어두운 남색)
+  wallMid: 0x14123a, // 벽 하단 (약간 밝은 남색)
+  wallBdr: 0x201e4e, // 벽/바닥 경계선
+  floor:   0x161528, // 바닥 기본색
+  floorLn: 0x1c1b36, // 바닥 타일 선
+  rug:     0x1d1c3c, // 가운데 러그
+  rugBdr:  0x2a2858, // 러그 테두리
+
+  // 책상
+  deskSurf: 0x7c5c46, // 책상 상면 (나무색)
+  deskHi:   0x9c7860, // 책상 하이라이트 (앞면 상단)
+  deskSha:  0x543c28, // 책상 그림자 (하단/측면)
+  deskLeg:  0x3c2a18, // 책상 다리
+
+  // 모니터
+  mon: 0x0c0c1e, // 모니터 프레임
+  scr: 0x070d3e, // 모니터 화면
+
+  // 캐릭터
+  skin:  0xffcc99, // 피부색
+  blush: 0xff8888, // 볼터치 (핑크)
+  eye:   0x1a1a2a, // 눈 색상
+  chair: 0x1a1838, // 의자 등받이
+  seat:  0x111128, // 의자 방석
+
+  // UI 바
+  barBg:    0x080810, // 하단 바 배경
+
+  // 버튼 색상 (기본 / 호버)
+  btnIn:    0x4e4bcc, btnInH:  0x6e6bee, // 출근하기 (파란색)
+  btnOut:   0xbb3232, btnOutH: 0xdd4444, // 퇴근하기 (빨간색)
+  btnAway:  0x553818, btnAwayA: 0x7a5020, // 자리비움 (앰버색)
+
+  // 텍스트 색상 (Phaser Text에서 string으로 사용)
+  tPri: '#e8e8ff', // 기본 텍스트 (흰 보라)
+  tMut: '#666699', // 보조 텍스트 (흐린 보라)
+  tGrn: '#33cc88', // 접속 표시 (초록)
+  tYel: '#ffdd44', // 경고/강조 (노랑)
 };
 
-// ─── 헬퍼 ────────────────────────────────────────────────────────────────────
+// ─── 헬퍼 함수 ───────────────────────────────────────────────────────────────
 
+/**
+ * Press Start 2P 폰트로 텍스트 오브젝트를 생성한다.
+ * resolution:2 로 고DPI 화면에서도 선명하게 렌더링.
+ * @param {Phaser.Scene} sc  현재 씬
+ * @param {number} x, y      위치
+ * @param {string} s         문자열
+ * @param {number} sz        폰트 크기 (px)
+ * @param {string} col       색상 문자열 (#RRGGBB)
+ */
 const $t = (sc, x, y, s, sz, col) =>
   sc.add.text(x, y, s, { fontFamily: '"Press Start 2P"', fontSize: sz, color: col, resolution: 2 });
 
+/**
+ * 색상 hex 문자열('#RRGGBB')을 Phaser Graphics가 사용하는 숫자로 변환.
+ * 예: '#E05252' → 0xE05252
+ */
 const $hex = s => parseInt((s ?? '#888888').replace('#', ''), 16);
 
 // ─── BootScene ───────────────────────────────────────────────────────────────
 
+/**
+ * 부팅 씬. Socket.io로 서버에 연결하는 동안 로딩 화면을 보여준다.
+ * 연결 성공 시 LabScene으로 전환.
+ */
 class BootScene extends Phaser.Scene {
   constructor() { super('Boot'); }
 
   create() {
     const g = this.add.graphics();
+
+    // 어두운 배경
     g.fillStyle(C.wallTop); g.fillRect(0, 0, W, H);
-    // 책상 실루엣
+
+    // 연구실 책상 실루엣 (로딩 중임을 시각적으로 표현)
     g.fillStyle(0x18163a);
     DESKS.forEach(d => g.fillRect(d.x - DW / 2, d.y, DW, DH + 20));
 
+    // 타이틀 + 로딩 점 애니메이션
     $t(this, W / 2, H / 2 - 24, 'PPAI Lab', 22, '#23206a').setOrigin(0.5);
     const dot = $t(this, W / 2, H / 2 + 16, '· · ·', 10, '#2e2a88').setOrigin(0.5);
     this.tweens.add({ targets: dot, alpha: { from: 0.3, to: 1 }, duration: 520, yoyo: true, repeat: -1 });
 
+    // 소켓 연결 시도
     const socket = io();
     socket.once('connect',       () => this.scene.start('Lab', { socket }));
     socket.once('connect_error', () => {
@@ -63,349 +154,454 @@ class BootScene extends Phaser.Scene {
 
 // ─── LabScene ─────────────────────────────────────────────────────────────────
 
+/**
+ * 메인 연구실 씬.
+ * 접속 즉시 연구실 화면을 보여주며(관찰자 모드),
+ * 출근하기 버튼을 눌러 닉네임을 입력하면 캐릭터가 등장한다.
+ *
+ * 내부 상태:
+ *   myName  현재 접속자 닉네임. null이면 관찰자 모드.
+ *   isAway  자리비움 여부.
+ *   users   서버에서 받은 현재 접속자 배열.
+ *   chars   이름 → 캐릭터 오브젝트 맵.
+ */
 class LabScene extends Phaser.Scene {
   constructor() { super('Lab'); }
 
+  /** 씬 초기화. scene.start() 시 전달받은 인자로 상태를 설정한다. */
   init({ socket }) {
     this.socket = socket;
-    this.myName = null;
+    this.myName = null;   // null = 관찰자 모드 (출근 전)
     this.isAway = false;
     this.users  = [];
-    this.chars  = {};
-    this._modal = null;
+    this.chars  = {};     // 이름 → { container, g, timerTxt, msgG, msgTxt, tween, ... }
+    this._modal = null;   // 출근 모달 오브젝트. null이면 닫힌 상태.
   }
 
   create() {
-    this._drawRoom();
-    this._drawDesks();
-    this._buildUI();
+    this._drawRoom();  // 연구실 배경 (벽, 바닥, 창문, 책장, 러그 등)
+    this._drawDesks(); // 6개 책상 + 모니터/키보드/커피잔
+    this._buildUI();   // 하단 UI 바 (출근/퇴근/자리비움 버튼, 접속자 수)
 
-    const onState = u => this._sync(u);
-    const onErr   = m => this._labErr(m);
+    // 서버 이벤트 수신 등록
+    const onState = u => this._sync(u);    // 전체 상태 갱신
+    const onErr   = m => this._labErr(m);  // 에러 메시지 (모달 안에 표시)
     this.socket.on('state_sync', onState);
     this.socket.on('lab_error',  onErr);
+
+    // 씬 종료 시 이벤트 리스너 정리 (메모리 누수 방지)
     this.events.once('shutdown', () => {
       this.socket.off('state_sync', onState);
       this.socket.off('lab_error',  onErr);
     });
+
+    // 1초마다 타이머 갱신 (캐릭터 위 업무 시간 표시)
     this.time.addEvent({ delay: 1000, loop: true, callback: this._tick, callbackScope: this });
   }
 
-  // ── 방 그리기 ──────────────────────────────────────────────────────────────
+  // ─── 연구실 배경 그리기 ──────────────────────────────────────────────────────
 
+  /** 연구실 전체 배경을 그린다 (벽, 바닥, 창문, 책장, 시계, 화분 등). */
   _drawRoom() {
     const g = this.add.graphics();
 
-    // 벽
-    g.fillStyle(C.wallTop); g.fillRect(0, 0, W, WALL_H);
-    g.fillStyle(C.wallMid); g.fillRect(0, WALL_H - 52, W, 52);
-    g.fillStyle(C.wallBdr); g.fillRect(0, WALL_H - 6, W, 6);
-    g.fillStyle(0x28265a);  g.fillRect(0, WALL_H, W, 3);
+    // ── 벽 ──
+    g.fillStyle(C.wallTop); g.fillRect(0, 0, W, WALL_H);          // 위쪽 벽
+    g.fillStyle(C.wallMid); g.fillRect(0, WALL_H - 52, W, 52);    // 바닥 근처 밝은 띠
+    g.fillStyle(C.wallBdr); g.fillRect(0, WALL_H - 6,  W, 6);     // 걸레받이
+    g.fillStyle(0x28265a);  g.fillRect(0, WALL_H, W, 3);           // 벽/바닥 경계 하이라이트
 
-    // 바닥
+    // ── 바닥 + 타일 선 ──
     g.fillStyle(C.floor); g.fillRect(0, WALL_H, W, H - WALL_H - UI_H);
     g.lineStyle(1, C.floorLn, 1);
-    for (let x = 0; x <= W; x += 80)           { g.beginPath(); g.moveTo(x, WALL_H);     g.lineTo(x, H - UI_H); g.strokePath(); }
-    for (let y = WALL_H; y <= H - UI_H; y += 80) { g.beginPath(); g.moveTo(0, y);         g.lineTo(W, y);        g.strokePath(); }
+    for (let x = 0; x <= W; x += 80)             { g.beginPath(); g.moveTo(x, WALL_H);     g.lineTo(x, H - UI_H); g.strokePath(); }
+    for (let y = WALL_H; y <= H - UI_H; y += 80) { g.beginPath(); g.moveTo(0, y);          g.lineTo(W, y);        g.strokePath(); }
 
-    // 러그
+    // ── 러그 (책상 사이 가운데) ──
     g.fillStyle(C.rug);    g.fillRect(54, 350, W - 108, 144);
-    g.lineStyle(2, C.rugBdr, 1);   g.strokeRect(60, 356, W - 120, 132);
-    g.lineStyle(1, C.rugBdr, 0.5); g.strokeRect(70, 366, W - 140, 112);
-    // 러그 코너 장식
+    g.lineStyle(2, C.rugBdr, 1);   g.strokeRect(60, 356, W - 120, 132);  // 외곽 테두리
+    g.lineStyle(1, C.rugBdr, 0.5); g.strokeRect(70, 366, W - 140, 112);  // 내곽 테두리
+    // 러그 코너 장식 (작은 점)
     [[60,356],[W-60,356],[60,488],[W-60,488]].forEach(([rx, ry]) => {
       g.fillStyle(C.rugBdr); g.fillRect(rx - 3, ry - 3, 6, 6);
     });
 
-    // 따뜻한 천장 조명 느낌
+    // ── 따뜻한 천장 조명 글로우 ──
     const glow = this.add.graphics();
     glow.fillStyle(0xffeeaa, 0.035); glow.fillEllipse(W / 2, 50, 680, 320);
 
-    // 창문
-    this._window(g, 36, 8);
-    this._window(g, W - 152, 8);
+    // ── 창문 (좌우) ──
+    this._window(g, 36, 8);        // 왼쪽 창문 (x=36)
+    this._window(g, W - 152, 8);   // 오른쪽 창문 (x=W-152)
 
-    // 책장
+    // ── 책장 ──
     this._shelf(g, 224, 4);
 
-    // 벽시계
+    // ── 벽시계 ──
     this._wallClock(g, 480, 16);
 
-    // 화분
+    // ── 화분 (좌우 코너) ──
     this._plant(g, 14,     WALL_H);
     this._plant(g, W - 14, WALL_H);
 
-    // 사이드 비네트
+    // ── 사이드 비네트 (가장자리 어둡게) ──
     const vig = this.add.graphics();
     vig.fillStyle(0x000000, 0.12); vig.fillRect(0,     0, 44, H);
     vig.fillStyle(0x000000, 0.12); vig.fillRect(W - 44, 0, 44, H);
   }
 
+  /**
+   * 창문을 그린다. 야간 설정: 달, 별, 커튼 포함.
+   * @param {Phaser.GameObjects.Graphics} g  그래픽스 오브젝트
+   * @param {number} x  창문 좌상단 x
+   * @param {number} y  창문 좌상단 y
+   */
   _window(g, x, y) {
     const ww = 116, wh = 130;
-    // 커튼 레일
-    g.fillStyle(0x5a3a28); g.fillRect(x - 16, y, ww + 32, 6);
-    // 프레임
-    g.fillStyle(0x3e2c1a); g.fillRect(x, y + 4, ww, wh);
-    // 하늘
-    g.fillStyle(0x08102e); g.fillRect(x + 5, y + 9, ww - 10, wh - 14);
-    // 별
+    g.fillStyle(0x5a3a28); g.fillRect(x - 16, y, ww + 32, 6);    // 커튼 레일
+    g.fillStyle(0x3e2c1a); g.fillRect(x, y + 4, ww, wh);          // 창틀
+    g.fillStyle(0x08102e); g.fillRect(x + 5, y + 9, ww - 10, wh - 14); // 야간 하늘
+    // 별들
     g.fillStyle(0xffffff, 1);
     [[16,10],[48,6],[86,16],[28,40],[70,28],[96,50],[10,58],[54,64],[80,44]].forEach(
       ([dx, dy]) => g.fillRect(x + dx, y + dy, 2, 2)
     );
-    // 달
-    g.fillStyle(0xfff8cc); g.fillCircle(x + 82, y + 22, 13);
-    g.fillStyle(0x08102e); g.fillCircle(x + 87, y + 19, 10);
+    // 달 (초승달 느낌)
+    g.fillStyle(0xfff8cc); g.fillCircle(x + 82, y + 22, 13); // 달 본체
+    g.fillStyle(0x08102e); g.fillCircle(x + 87, y + 19, 10); // 달 그림자 (초승달)
     // 창틀 분리대
     g.fillStyle(0x3e2c1a);
-    g.fillRect(x + 55, y + 9,  5, wh - 14);
-    g.fillRect(x + 5,  y + 64, ww - 10, 5);
-    // 커튼
+    g.fillRect(x + 55, y + 9,  5, wh - 14); // 세로 분리대
+    g.fillRect(x + 5,  y + 64, ww - 10, 5); // 가로 분리대
+    // 커튼 (양쪽)
     g.fillStyle(0x3d2252);
-    g.fillRect(x - 14, y + 4, 16, wh);
-    g.fillRect(x + ww - 2, y + 4, 16, wh);
+    g.fillRect(x - 14, y + 4, 16, wh);      // 왼쪽 커튼
+    g.fillRect(x + ww - 2, y + 4, 16, wh);  // 오른쪽 커튼
+    // 커튼 하이라이트 (입체감)
     g.fillStyle(0x5a3370, 0.55);
     g.fillRect(x - 12, y + 4, 5, wh);
     g.fillRect(x + ww - 2, y + 4, 5, wh);
   }
 
+  /**
+   * 벽에 걸린 책장을 그린다. 책, 액자, 화분 소품 포함.
+   * @param {Phaser.GameObjects.Graphics} g
+   * @param {number} x  책장 좌상단 x
+   * @param {number} y  책장 좌상단 y
+   */
   _shelf(g, x, y) {
     const sw = 512, sh = 100;
+    // 책장 본체 + 테두리
     g.fillStyle(0x5a4030); g.fillRect(x, y, sw, sh);
-    g.fillStyle(0x3e2c1a); g.fillRect(x, y,      sw, 5);
+    g.fillStyle(0x3e2c1a); g.fillRect(x, y, sw, 5);
     g.fillStyle(0x3e2c1a); g.fillRect(x, y + sh - 5, sw, 5);
-    // 선반 판
+    // 선반 분리판
     g.fillStyle(0x3e2c1a);
-    g.fillRect(x + 4, y + sh / 2 - 3, sw - 8, 5);
-    g.fillRect(x + sw / 3 - 2,     y + 4, 4, sh - 8);
-    g.fillRect(x + sw * 2 / 3 - 2, y + 4, 4, sh - 8);
+    g.fillRect(x + 4,          y + sh / 2 - 3,  sw - 8, 5); // 수평 선반
+    g.fillRect(x + sw / 3 - 2,     y + 4, 4, sh - 8);       // 세로 칸막이 1
+    g.fillRect(x + sw * 2 / 3 - 2, y + 4, 4, sh - 8);       // 세로 칸막이 2
 
-    // 책들
+    // 책들 (색상 풀에서 순서대로 배정)
     const bc = [0xcc4444,0x4488cc,0x44aa66,0xcc8844,0x8844cc,0xcc4488,0x44cccc,0xaacc44,0xcc6644,0x4466cc,0x44cc88,0xdd8844,0x55aadd,0xcc4466,0xaa44cc];
+    // 위쪽 칸 (2/3 지점까지)
     let bx = x + 8;
     for (let i = 0; i < 14 && bx < x + sw * 2 / 3 - 12; i++) {
       const bw = 13 + (i % 4) * 3, bh = 26 + (i % 5) * 5;
       const by = y + sh / 2 - bh - 6;
-      g.fillStyle(bc[i]); g.fillRect(bx, by, bw, bh);
-      g.fillStyle(0x000000, 0.2); g.fillRect(bx, by, 2, bh);
-      g.fillStyle(0xffffff, 0.08); g.fillRect(bx + bw - 2, by, 2, bh);
+      g.fillStyle(bc[i]);          g.fillRect(bx, by, bw, bh);      // 책 본체
+      g.fillStyle(0x000000, 0.2);  g.fillRect(bx, by, 2, bh);       // 왼쪽 그림자
+      g.fillStyle(0xffffff, 0.08); g.fillRect(bx + bw - 2, by, 2, bh); // 오른쪽 하이라이트
       bx += bw + 2;
     }
+    // 아래쪽 칸 (2/3 지점 이후)
     bx = x + sw * 2 / 3 + 8;
     for (let i = 0; i < 7 && bx < x + sw - 10; i++) {
       const bw = 14 + (i % 3) * 4, bh = 30 + (i % 3) * 6;
       const by = y + sh - bh - 8;
       g.fillStyle(bc[(i + 8) % bc.length]); g.fillRect(bx, by, bw, bh);
-      g.fillStyle(0x000000, 0.2); g.fillRect(bx, by, 2, bh);
+      g.fillStyle(0x000000, 0.2);            g.fillRect(bx, by, 2, bh);
       bx += bw + 2;
     }
-    // 소품 (액자, 작은 화분)
+    // 소품: 액자 + 작은 화분
     g.fillStyle(0x88aacc); g.fillRect(x + sw / 3 + 12, y + sh / 2 + 6, 24, 30);
     g.fillStyle(0x5588aa); g.fillRect(x + sw / 3 + 15, y + sh / 2 + 9, 18, 24);
     g.fillStyle(0x88cc88); g.fillCircle(x + sw * 2 / 3 - 28, y + 20, 9);
     g.fillStyle(0x2a5a28); g.fillRect(x + sw * 2 / 3 - 31, y + 14, 6, 10);
   }
 
+  /**
+   * 벽시계를 그린다. 시침/분침은 정적(10:10 위치 — 시계 광고 표준 포즈).
+   */
   _wallClock(g, cx, y) {
     const r = 25;
-    g.fillStyle(0x28245e); g.fillCircle(cx, y + r, r + 5);
-    g.fillStyle(0xf4f0ff); g.fillCircle(cx, y + r, r);
-    g.fillStyle(0xe8e4f8); g.fillCircle(cx, y + r, r - 2);
+    g.fillStyle(0x28245e); g.fillCircle(cx, y + r, r + 5); // 외곽 프레임
+    g.fillStyle(0xf4f0ff); g.fillCircle(cx, y + r, r);     // 흰 배경
+    g.fillStyle(0xe8e4f8); g.fillCircle(cx, y + r, r - 2); // 내부 (약간 어두움)
+    // 12개 시각 눈금
     g.fillStyle(0x333366);
     for (let i = 0; i < 12; i++) {
       const a = (i / 12) * Math.PI * 2 - Math.PI / 2;
       g.fillRect(cx + Math.cos(a) * (r - 4) - 1, y + r + Math.sin(a) * (r - 4) - 1, 2, 2);
     }
-    // 시침/분침 (10:10 — 미관상 최적)
+    // 시침 (10시 방향), 분침 (2시 방향)
     g.lineStyle(2, 0x222255, 1);
     g.beginPath(); g.moveTo(cx, y + r); g.lineTo(cx - 9, y + r - 13); g.strokePath();
     g.beginPath(); g.moveTo(cx, y + r); g.lineTo(cx + 12, y + r - 10); g.strokePath();
-    g.fillStyle(0x333366); g.fillCircle(cx, y + r, 3);
+    g.fillStyle(0x333366); g.fillCircle(cx, y + r, 3); // 중심 핀
   }
 
+  /**
+   * 화분을 그린다. 흙, 화분, 잎사귀로 구성.
+   * @param {Phaser.GameObjects.Graphics} g
+   * @param {number} x  화분 중심 x
+   * @param {number} y  화분이 놓이는 바닥 y (WALL_H)
+   */
   _plant(g, x, y) {
-    g.fillStyle(0x7a3e18); g.fillRect(x - 14, y - 30, 28, 26);
-    g.fillStyle(0x6a3210); g.fillRect(x - 16, y - 36, 32,  8);
-    g.fillStyle(0x9a6030); g.fillRect(x - 13, y - 28, 26,  5);
-    g.fillStyle(0x2e1a08); g.fillRect(x - 11, y - 26, 22, 10);
+    g.fillStyle(0x7a3e18); g.fillRect(x - 14, y - 30, 28, 26); // 화분 본체
+    g.fillStyle(0x6a3210); g.fillRect(x - 16, y - 36, 32,  8); // 화분 테두리
+    g.fillStyle(0x9a6030); g.fillRect(x - 13, y - 28, 26,  5); // 화분 상단 하이라이트
+    g.fillStyle(0x2e1a08); g.fillRect(x - 11, y - 26, 22, 10); // 흙
+    // 잎사귀 (중앙 + 좌우 + 위쪽)
     g.fillStyle(0x2a6a30); g.fillCircle(x,      y - 52, 19);
     g.fillStyle(0x3a8a40); g.fillCircle(x - 16, y - 40, 14);
     g.fillStyle(0x3a8a40); g.fillCircle(x + 16, y - 40, 14);
     g.fillStyle(0x4aaa50); g.fillCircle(x,      y - 62, 13);
-    g.fillStyle(0x2a5a28); g.fillRect(x - 2,   y - 44,  4, 18);
+    g.fillStyle(0x2a5a28); g.fillRect(x - 2,   y - 44,  4, 18); // 줄기
   }
 
-  // ── 책상 ───────────────────────────────────────────────────────────────────
+  // ─── 책상 그리기 ─────────────────────────────────────────────────────────────
 
+  /** 모든 책상을 그린다. */
   _drawDesks() {
     const g = this.add.graphics();
     DESKS.forEach(d => this._desk(g, d.x, d.y));
   }
 
+  /**
+   * 책상 1개를 그린다. 모니터, 키보드, 마우스, 커피잔 포함.
+   * @param {Phaser.GameObjects.Graphics} g
+   * @param {number} cx  책상 중심 x
+   * @param {number} cy  책상 상단 y
+   */
   _desk(g, cx, cy) {
-    g.fillStyle(C.deskSurf);  g.fillRect(cx - DW / 2, cy, DW, DH);
-    g.fillStyle(C.deskHi);    g.fillRect(cx - DW / 2, cy, DW, 7);
-    g.fillStyle(C.deskSha);   g.fillRect(cx - DW / 2, cy + DH - 4, DW, 4);
+    // ── 책상 상판 ──
+    g.fillStyle(C.deskSurf);     g.fillRect(cx - DW / 2, cy, DW, DH);
+    g.fillStyle(C.deskHi);       g.fillRect(cx - DW / 2, cy, DW, 7);           // 상단 하이라이트
+    g.fillStyle(C.deskSha);      g.fillRect(cx - DW / 2, cy + DH - 4, DW, 4); // 하단 그림자
     g.fillStyle(C.deskSha, 0.4);
-    g.fillRect(cx - DW / 2, cy, 3, DH);
-    g.fillRect(cx + DW / 2 - 3, cy, 3, DH);
+    g.fillRect(cx - DW / 2, cy, 3, DH);      // 왼쪽 측면
+    g.fillRect(cx + DW / 2 - 3, cy, 3, DH); // 오른쪽 측면
+
+    // ── 다리 ──
     g.fillStyle(C.deskLeg);
-    g.fillRect(cx - DW / 2 + 7, cy + DH, 10, 22);
+    g.fillRect(cx - DW / 2 + 7,  cy + DH, 10, 22);
     g.fillRect(cx + DW / 2 - 17, cy + DH, 10, 22);
-    // 모니터
-    g.fillStyle(C.mon);  g.fillRect(cx - 24, cy - 44, 48, 36);
-    g.fillStyle(C.scr);  g.fillRect(cx - 21, cy - 41, 42, 30);
-    g.fillStyle(0x1a2888, 0.5); g.fillRect(cx - 18, cy - 38, 36, 8);
-    g.fillStyle(0x0a1040, 0.4); g.fillRect(cx - 18, cy - 30, 36, 18);
+
+    // ── 모니터 ──
+    g.fillStyle(C.mon);  g.fillRect(cx - 24, cy - 44, 48, 36); // 프레임
+    g.fillStyle(C.scr);  g.fillRect(cx - 21, cy - 41, 42, 30); // 화면
+    g.fillStyle(0x1a2888, 0.5); g.fillRect(cx - 18, cy - 38, 36,  8); // 상단 글로우
+    g.fillStyle(0x0a1040, 0.4); g.fillRect(cx - 18, cy - 30, 36, 18); // 화면 내용 느낌
     g.fillStyle(C.mon);
-    g.fillRect(cx - 5, cy - 10, 10, 10);
-    g.fillRect(cx - 14, cy - 2, 28, 4);
-    // 키보드
-    g.fillStyle(0x181826); g.fillRect(cx - 36, cy + 9, 50, 14);
-    g.fillStyle(0x222234); g.fillRect(cx - 34, cy + 11, 46, 10);
+    g.fillRect(cx - 5,  cy - 10, 10, 10); // 모니터 스탠드 기둥
+    g.fillRect(cx - 14, cy - 2,  28,  4); // 스탠드 베이스
+
+    // ── 키보드 ──
+    g.fillStyle(0x181826); g.fillRect(cx - 36, cy + 9, 50, 14); // 외관
+    g.fillStyle(0x222234); g.fillRect(cx - 34, cy + 11, 46, 10); // 키패드 영역
     for (let r = 0; r < 2; r++)
       for (let k = 0; k < 8; k++) { g.fillStyle(0x2c2c42); g.fillRect(cx - 33 + k * 6, cy + 12 + r * 5, 5, 4); }
-    // 마우스
+
+    // ── 마우스 ──
     g.fillStyle(0x1e1e2e); g.fillRect(cx + 26, cy + 9, 13, 18);
-    g.fillStyle(0x2a2a3e); g.fillRect(cx + 28, cy + 11, 9, 7);
-    // 커피잔 ☕
-    g.fillStyle(0xcc8855); g.fillRect(cx + 52, cy + 4, 17, 21);
-    g.fillStyle(0xddaa77); g.fillRect(cx + 53, cy + 5, 15, 6);
-    g.fillStyle(0x3a2010); g.fillRect(cx + 54, cy + 11, 13, 12);
-    g.fillStyle(C.deskSurf); g.fillRect(cx + 51, cy + 23, 19, 3);
-    g.fillStyle(0xcc8855); g.fillRect(cx + 68, cy + 7, 4, 10);
+    g.fillStyle(0x2a2a3e); g.fillRect(cx + 28, cy + 11, 9, 7); // 클릭 영역
+
+    // ── 커피잔 ☕ ──
+    g.fillStyle(0xcc8855); g.fillRect(cx + 52, cy + 4, 17, 21);  // 잔 본체
+    g.fillStyle(0xddaa77); g.fillRect(cx + 53, cy + 5, 15,  6);  // 잔 상단 하이라이트
+    g.fillStyle(0x3a2010); g.fillRect(cx + 54, cy + 11, 13, 12); // 커피
+    g.fillStyle(C.deskSurf); g.fillRect(cx + 51, cy + 23, 19, 3); // 받침
+    g.fillStyle(0xcc8855); g.fillRect(cx + 68, cy + 7, 4, 10);    // 손잡이
+    // 커피 김 (반투명 흰색)
     g.fillStyle(0xffffff, 0.14);
     g.fillRect(cx + 57, cy + 1, 2, 3);
     g.fillRect(cx + 61, cy - 1, 2, 4);
   }
 
-  // ── 캐릭터 (Container 기반, 애니메이션) ──────────────────────────────────
+  // ─── 캐릭터 ──────────────────────────────────────────────────────────────────
 
+  /**
+   * 새 캐릭터를 연구실에 추가한다.
+   * Phaser Container를 사용해 여러 오브젝트를 하나로 묶어 함께 이동/애니메이션.
+   * @param {Object} user  서버에서 받은 사용자 데이터
+   */
   _addChar(user) {
     const pos = DESKS[user.desk];
-    if (!pos) return;
+    if (!pos) return; // 유효하지 않은 책상 번호면 무시
+
     const { x: cx, y: cy } = pos;
     const col = $hex(user.color);
 
+    // Container: 이 캐릭터의 모든 Phaser 오브젝트를 담는 그룹.
+    // 위치는 책상 상단(cx, cy)이 기준점(0,0). 모든 자식은 이 기준으로 그려짐.
     const container = this.add.container(cx, cy).setDepth(5);
 
-    // 캐릭터 그래픽스
+    // 캐릭터 몸체 (Graphics로 픽셀 아트 드로잉)
     const g = this.add.graphics();
     this._drawChar(g, col, user.status === 'away');
     container.add(g);
 
-    // 이름표
-    const nw = user.name.length * 9 + 20;
+    // ── 이름표 배경 (RoundedRect) ──
+    const nw = user.name.length * 9 + 20; // 이름 길이에 따라 너비 동적 조정
     const tagG = this.add.graphics();
-    tagG.fillStyle(0x000000, 0.68); tagG.fillRoundedRect(-nw / 2, -92, nw, 20, 3);
-    tagG.lineStyle(1, col, 0.5);   tagG.strokeRoundedRect(-nw / 2, -92, nw, 20, 3);
+    tagG.fillStyle(0x000000, 0.68);
+    tagG.fillRoundedRect(-nw / 2, -92, nw, 20, 3);  // 배경
+    tagG.lineStyle(1, col, 0.5);
+    tagG.strokeRoundedRect(-nw / 2, -92, nw, 20, 3); // 색상 테두리
+
     const nameTxt = this.add.text(0, -82, user.name, {
       fontFamily: '"Press Start 2P"', fontSize: 7, color: user.color, resolution: 2,
     }).setOrigin(0.5, 1);
     container.add([tagG, nameTxt]);
 
-    // 타이머
+    // ── 타이머 텍스트 (MM:SS 또는 HH:MM:SS) ──
     const timerTxt = this.add.text(0, -68, '00:00', {
       fontFamily: '"Press Start 2P"', fontSize: 6, color: C.tMut, resolution: 2,
     }).setOrigin(0.5, 1);
     container.add(timerTxt);
 
-    // 말풍선 (그래픽스 기반)
-    const msgG = this.add.graphics();
+    // ── 말풍선 (그래픽스 기반, 기본 비표시) ──
+    // msgG: 말풍선 배경 + 꼬리 그림
+    // msgTxt: 메시지 텍스트
+    const msgG   = this.add.graphics();
     const msgTxt = this.add.text(0, -102, '', {
       fontFamily: '"Press Start 2P"', fontSize: 7, color: '#111111', resolution: 2,
     }).setOrigin(0.5, 1).setVisible(false);
     container.add([msgG, msgTxt]);
 
-    // 떠다니는 애니메이션
+    // ── 떠다니는 idle 애니메이션 ──
+    // 사람마다 약간 다른 주기로 위아래로 미세하게 움직임 (생동감)
     const tween = this.tweens.add({
-      targets: container, y: cy - 3, yoyo: true, repeat: -1,
-      duration: 1400 + Math.random() * 700, ease: 'Sine.easeInOut',
+      targets: container,
+      y: cy - 3,          // 위로 3px
+      yoyo: true,         // 왔다갔다
+      repeat: -1,         // 무한 반복
+      duration: 1400 + Math.random() * 700,
+      ease: 'Sine.easeInOut',
     });
 
     this.chars[user.name] = { container, g, tagG, nameTxt, timerTxt, msgG, msgTxt, tween };
+
+    // 초기 상태 적용
     this._applyAway(user.name, user.status === 'away');
     if (user.message) this._showMsg(user.name, user.message);
   }
 
+  /**
+   * 캐릭터 픽셀 아트를 그린다.
+   * Container의 로컬 좌표계 사용: (0, 0) = 책상 상단 중앙.
+   * 캐릭터는 모두 음수 y 위치 (책상 위쪽)에 그려짐.
+   *
+   * @param {Phaser.GameObjects.Graphics} g
+   * @param {number} col    캐릭터 색상 (셔츠/머리카락)
+   * @param {boolean} away  자리비움 여부 (true면 눈 감음)
+   */
   _drawChar(g, col, away) {
     g.clear();
+    // 머리카락은 셔츠 색상보다 조금 더 어두운 계열
     const hair = Math.max(0, col - 0x2a2a2a);
 
-    // 의자
-    g.fillStyle(C.chair, 1); g.fillRect(-20, -50, 40, 38);
-    g.fillStyle(0x22244a, 1); g.fillRect(-18, -48, 36, 7);
-    g.fillStyle(C.seat, 1);  g.fillRect(-17, -14, 34, 8);
+    // ── 의자 ──
+    g.fillStyle(C.chair, 1); g.fillRect(-20, -50, 40, 38); // 등받이
+    g.fillStyle(0x22244a, 1); g.fillRect(-18, -48, 36, 7);  // 등받이 상단 강조
+    g.fillStyle(C.seat, 1);  g.fillRect(-17, -14, 34, 8);  // 방석
 
-    // 몸 (셔츠)
-    g.fillStyle(col, 1);      g.fillRect(-13, -30, 26, 16);
-    g.fillStyle(C.skin, 1);  g.fillRect(-4, -30, 8, 7); // 칼라
+    // ── 몸 (셔츠) ──
+    g.fillStyle(col, 1);     g.fillRect(-13, -30, 26, 16); // 상체
+    g.fillStyle(C.skin, 1); g.fillRect(-4, -30, 8, 7);    // 칼라 (목 부분)
 
-    // 머리
-    g.fillStyle(C.skin, 1);  g.fillRect(-11, -56, 22, 26);
-
-    // 헤어
+    // ── 머리 ──
+    g.fillStyle(C.skin, 1); g.fillRect(-11, -56, 22, 26); // 얼굴
+    // 헤어 (위 + 양 옆)
     g.fillStyle(hair, 1);
-    g.fillRect(-11, -56, 22, 10);
-    g.fillRect(-14, -54,  5, 18);
-    g.fillRect(  9, -54,  5, 14);
+    g.fillRect(-11, -56, 22, 10); // 정수리
+    g.fillRect(-14, -54,  5, 18); // 왼쪽 귀밑
+    g.fillRect(  9, -54,  5, 14); // 오른쪽 귀밑
 
     if (away) {
-      // 자리비움: 눈 감음
+      // 자리비움: 눈 감음 (가로선)
       g.fillStyle(C.eye, 1);
       g.fillRect(-7, -43, 5, 2);
       g.fillRect( 2, -43, 5, 2);
     } else {
-      // 눈
+      // 정상: 눈 + 하이라이트 + 볼터치 + 미소
       g.fillStyle(C.eye, 1);
-      g.fillRect(-7, -46, 5, 5);
-      g.fillRect( 2, -46, 5, 5);
-      // 눈 하이라이트
+      g.fillRect(-7, -46, 5, 5); // 왼눈
+      g.fillRect( 2, -46, 5, 5); // 오른눈
+      // 눈 하이라이트 (작은 흰 점)
       g.fillStyle(0xffffff, 1);
       g.fillRect(-6, -46, 2, 2);
       g.fillRect( 3, -46, 2, 2);
-      // 볼터치
+      // 볼터치 (반투명 분홍)
       g.fillStyle(C.blush, 0.75);
-      g.fillRect(-10, -40, 5, 3);
-      g.fillRect(  5, -40, 5, 3);
+      g.fillRect(-10, -40, 5, 3); // 왼쪽 볼
+      g.fillRect(  5, -40, 5, 3); // 오른쪽 볼
       // 입 (작은 미소)
       g.fillStyle(0xcc9977, 1);
       g.fillRect(-3, -34, 6, 2);
     }
   }
 
+  /**
+   * 기존 캐릭터 상태를 업데이트한다.
+   * 서버에서 state_sync를 받을 때마다 호출됨.
+   */
   _updateChar(user) {
     const c = this.chars[user.name];
     if (!c) return;
-    this._drawChar(c.g, $hex(user.color), user.status === 'away');
-    this._applyAway(user.name, user.status === 'away');
+    this._drawChar(c.g, $hex(user.color), user.status === 'away'); // 얼굴 재그리기
+    this._applyAway(user.name, user.status === 'away');             // 투명도 적용
     user.message ? this._showMsg(user.name, user.message) : this._hideMsg(user.name);
   }
 
+  /**
+   * 캐릭터를 화면에서 제거한다 (퇴근 또는 연결 끊김).
+   * Tween 먼저 중지 후 Container 파괴 (메모리 정리).
+   */
   _removeChar(name) {
     const c = this.chars[name];
     if (!c) return;
-    c.tween?.remove();
-    c.container?.destroy();
+    c.tween?.remove();      // 애니메이션 중지
+    c.container?.destroy(); // 컨테이너 + 모든 자식 오브젝트 파괴
     delete this.chars[name];
   }
 
+  /**
+   * 자리비움 상태에 따라 캐릭터 투명도를 조절한다.
+   * away=true이면 반투명하게 (0.42), 일반이면 불투명 (1).
+   */
   _applyAway(name, away) {
     const c = this.chars[name];
     if (c) c.container.setAlpha(away ? 0.42 : 1);
   }
 
+  /**
+   * 캐릭터 위에 말풍선을 표시한다.
+   * 말풍선 너비는 텍스트 길이에 맞게 자동 조정.
+   * 서버에서 5초 후 message=null 로 state_sync가 오면 자동 숨겨짐.
+   */
   _showMsg(name, msg) {
     const c = this.chars[name];
     if (!c) return;
     c.msgTxt.setText(msg).setVisible(true);
-    const tw = Math.min(188, c.msgTxt.width + 16);
+    const tw = Math.min(188, c.msgTxt.width + 16); // 최대 너비 188px
     c.msgG.clear();
-    c.msgG.fillStyle(0xffffff, 0.94); c.msgG.fillRoundedRect(-tw / 2, -122, tw, 22, 3);
-    c.msgG.fillTriangle(-6, -100, 6, -100, 0, -93);
+    c.msgG.fillStyle(0xffffff, 0.94);
+    c.msgG.fillRoundedRect(-tw / 2, -122, tw, 22, 3); // 말풍선 배경
+    c.msgG.fillTriangle(-6, -100, 6, -100, 0, -93);   // 꼬리 (아래 방향 삼각형)
   }
 
+  /** 말풍선을 숨긴다. */
   _hideMsg(name) {
     const c = this.chars[name];
     if (!c) return;
@@ -413,16 +609,27 @@ class LabScene extends Phaser.Scene {
     c.msgG.clear();
   }
 
-  // ── 상태 동기화 ─────────────────────────────────────────────────────────────
+  // ─── 상태 동기화 ──────────────────────────────────────────────────────────────
 
+  /**
+   * 서버에서 받은 전체 상태로 연구실을 갱신한다.
+   * - 더 이상 없는 캐릭터 제거
+   * - 새로 생긴 캐릭터 추가
+   * - 기존 캐릭터 상태 업데이트 (자리비움, 말풍선 등)
+   *
+   * @param {Array} users  서버 state_sync 데이터
+   */
   _sync(users) {
     this.users = users;
     if (this.countTxt) this.countTxt.setText(`${users.length}명`);
 
     const live = new Set(users.map(u => u.name));
+    // 서버에 없는 캐릭터 제거 (퇴근/연결 끊김)
     Object.keys(this.chars).forEach(n => { if (!live.has(n)) this._removeChar(n); });
+    // 신규 추가 또는 상태 업데이트
     users.forEach(u => this.chars[u.name] ? this._updateChar(u) : this._addChar(u));
 
+    // 내 자리비움 상태가 서버와 다르면 동기화
     const me = this.myName && users.find(u => u.name === this.myName);
     if (me) {
       const away = me.status === 'away';
@@ -430,6 +637,12 @@ class LabScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * 1초마다 호출되어 각 캐릭터 위의 타이머를 갱신한다.
+   * 클라이언트에서 직접 계산 (서버 부하 감소):
+   *   표시 시간 = totalToday + (현재시각 - checkInTime)
+   * away 상태에서는 checkInTime이 null이므로 totalToday만 표시.
+   */
   _tick() {
     const now = Date.now();
     this.users.forEach(u => {
@@ -443,30 +656,35 @@ class LabScene extends Phaser.Scene {
     });
   }
 
-  // ── UI 바 ──────────────────────────────────────────────────────────────────
+  // ─── UI 바 ────────────────────────────────────────────────────────────────────
 
+  /** 하단 UI 바를 만든다. 접속자 수 표시 + 출근/자리비움/퇴근 버튼. */
   _buildUI() {
-    const by = H - UI_H;
+    const by = H - UI_H; // 바 상단 y 좌표
 
+    // ── 바 배경 ──
     const bar = this.add.graphics().setDepth(20);
-    bar.fillStyle(C.barBg, 0.97); bar.fillRect(0, by, W, UI_H);
-    bar.lineStyle(1, 0x22226a, 1); bar.beginPath(); bar.moveTo(0, by); bar.lineTo(W, by); bar.strokePath();
+    bar.fillStyle(C.barBg, 0.97);  bar.fillRect(0, by, W, UI_H);
+    // 상단 경계선 (얇은 빛나는 선)
+    bar.lineStyle(1, 0x22226a, 1);  bar.beginPath(); bar.moveTo(0, by);     bar.lineTo(W, by);     bar.strokePath();
     bar.lineStyle(1, 0x4444bb, 0.3); bar.beginPath(); bar.moveTo(0, by + 1); bar.lineTo(W, by + 1); bar.strokePath();
 
-    // 접속자 표시 (왼쪽)
+    // ── 접속자 표시 (왼쪽) ──
+    // 맥박처럼 깜박이는 초록 점
     const dot = this.add.circle(20, by + 22, 5, 0x33cc88).setDepth(21);
     this.tweens.add({ targets: dot, alpha: { from: 0.4, to: 1 }, duration: 900, yoyo: true, repeat: -1 });
     this.countTxt = $t(this, 33, by + 22, '0명', 9, C.tGrn).setOrigin(0, 0.5).setDepth(21);
     $t(this, 33, by + 38, '접속 중', 6, C.tMut).setOrigin(0, 0.5).setDepth(21);
 
+    // 버전 표시 (오른쪽 하단)
     $t(this, W - 10, by + 8, 'v1.0', 6, '#22225a').setOrigin(1, 0).setDepth(21);
 
-    // 출근하기 버튼 (관찰자 모드)
+    // ── 출근하기 버튼 (관찰자 모드에서 표시) ──
     const [ciB, ciL] = this._makeBtn(W / 2, by + 32, 210, 42, C.btnIn, C.btnInH, '출근하기', 11);
     ciB.on('pointerdown', () => this._openModal());
-    this._ciG = [ciB, ciL];
+    this._ciG = [ciB, ciL]; // 관찰자 모드 버튼 그룹
 
-    // 자리비움 버튼 (근무 모드)
+    // ── 자리비움 버튼 (근무 중 모드에서 표시) ──
     const [awB, awL] = this._makeBtn(W / 2 - 108, by + 32, 182, 42, C.btnAway, C.btnAwayA, '자리비움', 10);
     awB.on('pointerdown', () => {
       this.isAway = !this.isAway;
@@ -475,76 +693,95 @@ class LabScene extends Phaser.Scene {
     });
     this.awB = awB; this.awL = awL;
 
-    // 퇴근하기 버튼
+    // ── 퇴근하기 버튼 ──
     const [outB, outL] = this._makeBtn(W - 112, by + 32, 186, 42, C.btnOut, C.btnOutH, '퇴근하기', 10);
     outB.on('pointerdown', () => this._checkout());
-    this._wkG = [awB, awL, outB, outL];
+    this._wkG = [awB, awL, outB, outL]; // 근무 중 버튼 그룹
 
-    this._setMode('observer');
+    this._setMode('observer'); // 초기: 관찰자 모드
   }
 
+  /**
+   * 픽셀 아트 스타일 버튼을 만든다.
+   * @returns {[Rectangle, Text]}  버튼 배경 + 레이블
+   */
   _makeBtn(x, y, w, h, fill, hover, label, fontSize) {
     const btn = this.add.rectangle(x, y, w, h, fill).setDepth(21).setInteractive({ useHandCursor: true });
+    // 픽셀 테두리 (흰색 반투명 선)
     const bd  = this.add.graphics().setDepth(21);
     bd.lineStyle(1, 0xffffff, 0.1); bd.strokeRect(x - w / 2 + 1, y - h / 2 + 1, w - 2, h - 2);
     const lbl = $t(this, x, y, label, fontSize, C.tPri).setOrigin(0.5).setDepth(22);
-    btn.on('pointerover',  () => btn.setFillStyle(hover));
-    btn.on('pointerout',   () => btn.setFillStyle(fill));
-    btn.on('pointerdown',  () => btn.setScale(0.96));
-    btn.on('pointerup',    () => btn.setScale(1));
+    btn.on('pointerover',  () => btn.setFillStyle(hover));     // 호버: 밝아짐
+    btn.on('pointerout',   () => btn.setFillStyle(fill));      // 호버 해제
+    btn.on('pointerdown',  () => btn.setScale(0.96));          // 클릭: 약간 축소
+    btn.on('pointerup',    () => btn.setScale(1));             // 클릭 해제: 원래 크기
     return [btn, lbl];
   }
 
+  /** 자리비움 버튼 텍스트/색상을 현재 isAway 상태에 맞게 갱신한다. */
   _refreshAwayBtn() {
     this.awB?.setFillStyle(this.isAway ? C.btnAwayA : C.btnAway);
     this.awL?.setText(this.isAway ? '돌아오기' : '자리비움');
   }
 
+  /**
+   * UI 모드를 전환한다.
+   * @param {string} m  'observer' (관찰자) | 'worker' (근무 중)
+   */
   _setMode(m) {
     const w = m === 'worker';
-    this._ciG?.forEach(o => o.setVisible(!w));
-    this._wkG?.forEach(o => o.setVisible(w));
+    this._ciG?.forEach(o => o.setVisible(!w)); // 출근하기: 관찰자일 때만 보임
+    this._wkG?.forEach(o => o.setVisible(w));  // 자리비움/퇴근: 근무 중일 때만 보임
   }
 
-  // ── 출근 모달 ──────────────────────────────────────────────────────────────
+  // ─── 출근 모달 ──────────────────────────────────────────────────────────────
 
+  /**
+   * 출근하기 모달을 연다.
+   * Phaser 오브젝트(배경, 패널, 텍스트) + DOM input(닉네임 입력) 조합.
+   * 모든 생성 오브젝트는 this._modal._objs 배열에 추적되어 닫을 때 일괄 파괴됨.
+   */
   _openModal() {
-    if (this._modal) return;
+    if (this._modal) return; // 이미 열려있으면 무시
+
     const objs = [];
+    // 헬퍼: 오브젝트를 추적 배열에 추가하고 반환
     const keep = o => { objs.push(o); return o; };
 
-    // 어두운 오버레이 (페이드 인)
+    // ── 어두운 오버레이 (클릭 차단 + 페이드 인) ──
     const ov = keep(this.add.rectangle(W / 2, H / 2, W, H, 0x000000).setAlpha(0).setDepth(50).setInteractive());
     this.tweens.add({ targets: ov, alpha: 0.76, duration: 200 });
 
-    // 패널
+    // ── 패널 (스케일+페이드 인 애니메이션) ──
     const pw = 440, ph = 280, px = W / 2, py = H / 2;
     const panel = keep(this.add.rectangle(px, py, pw, ph, 0x0e0c28).setAlpha(0).setScale(0.88).setDepth(51));
     this.tweens.add({ targets: panel, alpha: 1, scaleX: 1, scaleY: 1, duration: 240, ease: 'Back.easeOut' });
 
-    // 패널 테두리
+    // ── 패널 테두리 ──
     const pbdr = keep(this.add.graphics().setDepth(51).setAlpha(0));
-    pbdr.lineStyle(2, 0x4444cc, 1);    pbdr.strokeRect(px - pw / 2, py - ph / 2, pw, ph);
-    pbdr.lineStyle(1, 0x8888dd, 0.22); pbdr.strokeRect(px - pw / 2 + 3, py - ph / 2 + 3, pw - 6, ph - 6);
+    pbdr.lineStyle(2, 0x4444cc, 1);    pbdr.strokeRect(px - pw / 2, py - ph / 2, pw, ph);        // 외곽
+    pbdr.lineStyle(1, 0x8888dd, 0.22); pbdr.strokeRect(px - pw / 2 + 3, py - ph / 2 + 3, pw - 6, ph - 6); // 내곽
     this.tweens.add({ targets: pbdr, alpha: 1, duration: 240 });
 
-    // 코너 별 장식
-    [[px - pw / 2 + 12, py - ph / 2 + 12,'✦','#6666ee'],
-     [px + pw / 2 - 12, py - ph / 2 + 12,'✦','#6666ee'],
-     [px - pw / 2 + 12, py + ph / 2 - 12,'✧','#4444aa'],
-     [px + pw / 2 - 12, py + ph / 2 - 12,'✧','#4444aa']].forEach(([cx, cy, s, col]) => {
+    // ── 코너 별 장식 ──
+    [[px - pw / 2 + 12, py - ph / 2 + 12, '✦', '#6666ee'],
+     [px + pw / 2 - 12, py - ph / 2 + 12, '✦', '#6666ee'],
+     [px - pw / 2 + 12, py + ph / 2 - 12, '✧', '#4444aa'],
+     [px + pw / 2 - 12, py + ph / 2 - 12, '✧', '#4444aa']].forEach(([cx, cy, s, col]) => {
       const st = keep($t(this, cx, cy, s, 10, col).setOrigin(0.5).setDepth(52).setAlpha(0));
       this.tweens.add({ targets: st, alpha: 1, duration: 300, delay: 80 });
     });
 
-    // 타이틀
+    // ── 타이틀 ──
     const title = keep($t(this, px, py - 102, '오늘도 출근! ✨', 13, '#c8c8ff').setOrigin(0.5).setDepth(52).setAlpha(0));
     this.tweens.add({ targets: title, alpha: 1, duration: 240, delay: 60 });
 
     const sub = keep($t(this, px, py - 76, '닉네임을 입력하세요', 7, C.tMut).setOrigin(0.5).setDepth(52).setAlpha(0));
     this.tweens.add({ targets: sub, alpha: 1, duration: 240, delay: 100 });
 
-    // 입력 필드 (DOM)
+    // ── 닉네임 입력 필드 (DOM) ──
+    // font-size:16px → iOS에서 자동 줌 방지
+    // transform:scale(0.78) → 시각적 크기를 12px 수준으로 보정
     const domEl = keep(this.add.dom(px, py - 24).createFromHTML(`
       <input id="ci" type="text" autocomplete="off" maxlength="8" placeholder="최대 8자"
         style="font-family:'Press Start 2P',monospace;font-size:16px;
@@ -554,18 +791,21 @@ class LabScene extends Phaser.Scene {
                outline:none;letter-spacing:3px;display:block;
                transform:scale(0.78);transform-origin:center;">
     `).setDepth(52));
+    // Enter: 출근 시도 / Escape: 모달 닫기
     domEl.addListener('keydown').on('keydown', e => {
       if (e.key === 'Enter')  this._submitCheckin();
       if (e.key === 'Escape') this._closeModal();
-      if (this._modal?.errTxt) this._modal.errTxt.setText('');
+      if (this._modal?.errTxt) this._modal.errTxt.setText(''); // 오류 메시지 지우기
     });
 
+    // ── 오류 메시지 텍스트 ──
     const errTxt = keep($t(this, px, py + 24, '', 7, '#ff7777').setOrigin(0.5).setDepth(52));
 
-    // 버튼들
+    // ── 버튼 ──
     const btnY = py + 88;
     const [okB, okL, okBd] = this._modalBtn(px - 68, btnY, 124, 40, 0x3838cc, 0x5555ee, '출근!', 9);
     const [cnB, cnL, cnBd] = this._modalBtn(px + 68, btnY, 124, 40, 0x1a1830, 0x2a2448, '취소', 9);
+    // 버튼도 추적 배열에 추가 + 페이드 인
     [okB, okL, okBd, cnB, cnL, cnBd].forEach(o => {
       keep(o); o.setAlpha(0);
       this.tweens.add({ targets: o, alpha: 1, duration: 200, delay: 140 });
@@ -573,10 +813,16 @@ class LabScene extends Phaser.Scene {
     okB.on('pointerdown', () => this._submitCheckin());
     cnB.on('pointerdown', () => this._closeModal());
 
+    // errTxt는 _submitCheckin()에서 직접 접근하므로 this._modal에 별도 저장
     this._modal = { errTxt, _objs: objs };
+    // 약간의 딜레이 후 포커스 (DOM 렌더링 완료 대기)
     setTimeout(() => document.getElementById('ci')?.focus(), 80);
   }
 
+  /**
+   * 모달 전용 버튼을 만든다 (크기가 작고 딜레이 페이드 인).
+   * @returns {[Rectangle, Text, Graphics]}  배경, 레이블, 테두리
+   */
   _modalBtn(x, y, w, h, fill, hover, label, fontSize) {
     const btn = this.add.rectangle(x, y, w, h, fill).setDepth(52).setInteractive({ useHandCursor: true });
     const bd  = this.add.graphics().setDepth(52);
@@ -589,12 +835,19 @@ class LabScene extends Phaser.Scene {
     return [btn, lbl, bd];
   }
 
+  /**
+   * 모달을 닫는다. 추적 배열의 모든 오브젝트를 파괴하고 트윈을 중지.
+   */
   _closeModal() {
     if (!this._modal) return;
     this._modal._objs.forEach(o => { this.tweens.killTweensOf(o); o?.destroy?.(); });
     this._modal = null;
   }
 
+  /**
+   * 닉네임을 서버에 전송하고 출근을 시도한다.
+   * 서버에서 state_sync로 내 이름이 확인되면 근무 모드로 전환.
+   */
   _submitCheckin() {
     const el   = document.getElementById('ci');
     const name = (el?.value ?? '').trim();
@@ -604,9 +857,10 @@ class LabScene extends Phaser.Scene {
     }
     this.socket.emit('check_in', { name });
 
+    // 내 이름이 state_sync에 등장하면 출근 완료로 간주
     const wait = users => {
       if (users.find(u => u.name === name)) {
-        this.socket.off('state_sync', wait);
+        this.socket.off('state_sync', wait); // 임시 리스너 해제
         this.myName = name; this.isAway = false;
         this._closeModal();
         this._setMode('worker');
@@ -616,6 +870,7 @@ class LabScene extends Phaser.Scene {
     this.socket.on('state_sync', wait);
   }
 
+  /** 퇴근 처리. 캐릭터를 제거하고 관찰자 모드로 돌아간다. */
   _checkout() {
     this.socket.emit('check_out');
     this.myName = null; this.isAway = false;
@@ -623,8 +878,13 @@ class LabScene extends Phaser.Scene {
     this._setMode('observer');
   }
 
+  /** 서버 에러 메시지를 모달 안에 표시한다 (예: 자리 꽉 참). */
   _labErr(msg) { if (this._modal?.errTxt) this._modal.errTxt.setText(msg); }
 
+  /**
+   * 화면 중앙에 잠깐 나타났다 사라지는 알림 메시지.
+   * 출근 성공 시 환영 메시지로 사용.
+   */
   _toast(msg) {
     const t = $t(this, W / 2, H / 2 - 32, msg, 9, '#ffffff')
       .setOrigin(0.5).setDepth(60)
@@ -633,25 +893,28 @@ class LabScene extends Phaser.Scene {
       targets: t, y: H / 2 - 74,
       alpha: { from: 1, to: 0 },
       duration: 2400, ease: 'Cubic.easeIn',
-      onComplete: () => t.destroy(),
+      onComplete: () => t.destroy(), // 애니메이션 완료 후 메모리 해제
     });
   }
 }
 
-// ─── Game 설정 ────────────────────────────────────────────────────────────────
+// ─── Phaser 게임 초기화 ──────────────────────────────────────────────────────
 
 new Phaser.Game({
-  type: Phaser.AUTO,
+  type: Phaser.AUTO,        // WebGL 우선, 미지원 시 Canvas로 폴백
   width: W, height: H,
   backgroundColor: '#0c0b1e',
-  parent: 'game-container',
-  dom: { createContainer: true },
+  parent: 'game-container', // index.html의 #game-container 에 캔버스 삽입
+  dom: { createContainer: true }, // DOM 오브젝트(input 등) 사용 허용
   scene: [BootScene, LabScene],
   scale: {
-    mode: Phaser.Scale.FIT,
-    autoCenter: Phaser.Scale.CENTER_BOTH,
+    mode: Phaser.Scale.FIT,              // 화면 크기에 맞게 비율 유지하며 스케일
+    autoCenter: Phaser.Scale.CENTER_BOTH, // 가로/세로 모두 중앙 정렬
     width: W, height: H,
-    min: { width: 320, height: 213 },
+    min: { width: 320, height: 213 },    // 최소 크기 (매우 작은 화면 방어)
   },
-  render: { pixelArt: true, antialias: false },
+  render: {
+    pixelArt: true,    // 픽셀 아트 렌더링 (anti-aliasing 끔)
+    antialias: false,
+  },
 });
