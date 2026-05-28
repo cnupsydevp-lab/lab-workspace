@@ -57,45 +57,46 @@ const DW = 186, DH = 54;
  * 16진수 값은 Phaser Graphics API, 문자열은 Phaser Text API에서 사용.
  */
 const C = {
-  // 연구실 배경
-  wallTop: 0x0c0b1e, // 벽 상단 (더 어두운 남색)
-  wallMid: 0x14123a, // 벽 하단 (약간 밝은 남색)
-  wallBdr: 0x201e4e, // 벽/바닥 경계선
-  floor:   0x161528, // 바닥 기본색
-  floorLn: 0x1c1b36, // 바닥 타일 선
-  rug:     0x1d1c3c, // 가운데 러그
-  rugBdr:  0x2a2858, // 러그 테두리
+  // 연구실 배경 — 따뜻한 아이보리 / 그레이 / 브라운 톤
+  wallTop: 0xf2ede6, // 벽 상단 (따뜻한 아이보리 화이트)
+  wallMid: 0xe8e1d8, // 벽 하단 (크림)
+  wallBdr: 0xd0c8bc, // 걸레받이 (웜 그레이-브라운)
+  floor:   0xcdc5bc, // 바닥 기본색 (웜 그레이)
+  floorLn: 0xb8b0a4, // 바닥 타일 선
 
-  // 책상
-  deskSurf: 0x7c5c46, // 책상 상면 (나무색)
-  deskHi:   0x9c7860, // 책상 하이라이트 (앞면 상단)
-  deskSha:  0x543c28, // 책상 그림자 (하단/측면)
-  deskLeg:  0x3c2a18, // 책상 다리
+  rug:    0xeadccc, // 가운데 러그 (크림 베이지)
+  rugBdr: 0xc09868, // 러그 테두리 (웜 브라운)
 
-  // 모니터
-  mon: 0x0c0c1e, // 모니터 프레임
-  scr: 0x070d3e, // 모니터 화면
+  // 책상 — 따뜻한 원목 브라운
+  deskSurf: 0x9a7252, // 책상 상면
+  deskHi:   0xba8e6a, // 하이라이트
+  deskSha:  0x6c4a30, // 그림자
+  deskLeg:  0x4e3220, // 다리
+
+  // 모니터 — 따뜻한 차콜
+  mon: 0x3c3630, // 모니터 프레임
+  scr: 0x201c18, // 모니터 화면
 
   // 캐릭터
   skin:  0xffcc99, // 피부색
-  blush: 0xff8888, // 볼터치 (핑크)
-  eye:   0x1a1a2a, // 눈 색상
-  chair: 0x1a1838, // 의자 등받이
-  seat:  0x111128, // 의자 방석
+  blush: 0xff9988, // 볼터치
+  eye:   0x2a1808, // 눈 (따뜻한 다크 브라운)
+  chair: 0x72604e, // 의자 등받이 (웜 브라운-그레이)
+  seat:  0x5a4838, // 의자 방석
 
   // UI 바
-  barBg:    0x080810, // 하단 바 배경
+  barBg: 0x28221e, // 하단 바 배경 (따뜻한 다크 브라운)
 
   // 버튼 색상 (기본 / 호버)
-  btnIn:    0x4e4bcc, btnInH:  0x6e6bee, // 출근하기 (파란색)
-  btnOut:   0xbb3232, btnOutH: 0xdd4444, // 퇴근하기 (빨간색)
-  btnAway:  0x553818, btnAwayA: 0x7a5020, // 자리비움 (앰버색)
+  btnIn:    0x7a5c3a, btnInH:  0x9a7a52, // 출근하기 (웜 탄 브라운)
+  btnOut:   0x8c3030, btnOutH: 0xb04040, // 퇴근하기 (웜 다크 레드)
+  btnAway:  0x5c5040, btnAwayA: 0x7a6a52, // 자리비움 (웜 그레이-브라운)
 
   // 텍스트 색상 (Phaser Text에서 string으로 사용)
-  tPri: '#e8e8ff', // 기본 텍스트 (흰 보라)
-  tMut: '#666699', // 보조 텍스트 (흐린 보라)
-  tGrn: '#33cc88', // 접속 표시 (초록)
-  tYel: '#ffdd44', // 경고/강조 (노랑)
+  tPri: '#f2ede6', // 기본 텍스트 (따뜻한 화이트)
+  tMut: '#9a8a78', // 보조 텍스트 (웜 뮤트)
+  tGrn: '#5c9060', // 접속 표시 (뮤트 그린)
+  tYel: '#c09840', // 경고/강조 (웜 앰버)
 };
 
 // ─── 헬퍼 함수 ───────────────────────────────────────────────────────────────
@@ -130,16 +131,16 @@ class BootScene extends Phaser.Scene {
   create() {
     const g = this.add.graphics();
 
-    // 어두운 배경
+    // 따뜻한 아이보리 배경
     g.fillStyle(C.wallTop); g.fillRect(0, 0, W, H);
 
     // 연구실 책상 실루엣 (로딩 중임을 시각적으로 표현)
-    g.fillStyle(0x18163a);
+    g.fillStyle(0xd4c8b4);
     DESKS.forEach(d => g.fillRect(d.x - DW / 2, d.y, DW, DH + 20));
 
     // 타이틀 + 로딩 점 애니메이션
-    $t(this, W / 2, H / 2 - 24, 'PPAI Lab', 22, '#23206a').setOrigin(0.5);
-    const dot = $t(this, W / 2, H / 2 + 16, '· · ·', 10, '#2e2a88').setOrigin(0.5);
+    $t(this, W / 2, H / 2 - 24, 'PPAI Lab', 22, '#4a3a2a').setOrigin(0.5);
+    const dot = $t(this, W / 2, H / 2 + 16, '· · ·', 10, '#9a8a78').setOrigin(0.5);
     this.tweens.add({ targets: dot, alpha: { from: 0.3, to: 1 }, duration: 520, yoyo: true, repeat: -1 });
 
     // 소켓 연결 시도
@@ -209,7 +210,7 @@ class LabScene extends Phaser.Scene {
     g.fillStyle(C.wallTop); g.fillRect(0, 0, W, WALL_H);          // 위쪽 벽
     g.fillStyle(C.wallMid); g.fillRect(0, WALL_H - 52, W, 52);    // 바닥 근처 밝은 띠
     g.fillStyle(C.wallBdr); g.fillRect(0, WALL_H - 6,  W, 6);     // 걸레받이
-    g.fillStyle(0x28265a);  g.fillRect(0, WALL_H, W, 3);           // 벽/바닥 경계 하이라이트
+    g.fillStyle(0xb8b0a8);  g.fillRect(0, WALL_H, W, 3);           // 벽/바닥 경계 하이라이트
 
     // ── 바닥 + 타일 선 ──
     g.fillStyle(C.floor); g.fillRect(0, WALL_H, W, H - WALL_H - UI_H);
@@ -228,7 +229,7 @@ class LabScene extends Phaser.Scene {
 
     // ── 따뜻한 천장 조명 글로우 ──
     const glow = this.add.graphics();
-    glow.fillStyle(0xffeeaa, 0.035); glow.fillEllipse(W / 2, 50, 680, 320);
+    glow.fillStyle(0xffe8aa, 0.07); glow.fillEllipse(W / 2, 50, 680, 320);
 
     // ── 창문 (좌우) ──
     this._window(g, 36, 8);        // 왼쪽 창문 (x=36)
@@ -273,12 +274,12 @@ class LabScene extends Phaser.Scene {
     g.fillStyle(0x3e2c1a);
     g.fillRect(x + 55, y + 9,  5, wh - 14); // 세로 분리대
     g.fillRect(x + 5,  y + 64, ww - 10, 5); // 가로 분리대
-    // 커튼 (양쪽)
-    g.fillStyle(0x3d2252);
+    // 커튼 (양쪽) — 웜 테라코타 브라운
+    g.fillStyle(0x8a5038);
     g.fillRect(x - 14, y + 4, 16, wh);      // 왼쪽 커튼
     g.fillRect(x + ww - 2, y + 4, 16, wh);  // 오른쪽 커튼
     // 커튼 하이라이트 (입체감)
-    g.fillStyle(0x5a3370, 0.55);
+    g.fillStyle(0xa86848, 0.55);
     g.fillRect(x - 12, y + 4, 5, wh);
     g.fillRect(x + ww - 2, y + 4, 5, wh);
   }
@@ -334,20 +335,20 @@ class LabScene extends Phaser.Scene {
    */
   _wallClock(g, cx, y) {
     const r = 25;
-    g.fillStyle(0x28245e); g.fillCircle(cx, y + r, r + 5); // 외곽 프레임
-    g.fillStyle(0xf4f0ff); g.fillCircle(cx, y + r, r);     // 흰 배경
-    g.fillStyle(0xe8e4f8); g.fillCircle(cx, y + r, r - 2); // 내부 (약간 어두움)
+    g.fillStyle(0x5a4838); g.fillCircle(cx, y + r, r + 5); // 외곽 프레임 (웜 다크 브라운)
+    g.fillStyle(0xfaf6f0); g.fillCircle(cx, y + r, r);     // 시계 면 (따뜻한 화이트)
+    g.fillStyle(0xf0ece4); g.fillCircle(cx, y + r, r - 2); // 내부 (크림)
     // 12개 시각 눈금
-    g.fillStyle(0x333366);
+    g.fillStyle(0x4a3a2a);
     for (let i = 0; i < 12; i++) {
       const a = (i / 12) * Math.PI * 2 - Math.PI / 2;
       g.fillRect(cx + Math.cos(a) * (r - 4) - 1, y + r + Math.sin(a) * (r - 4) - 1, 2, 2);
     }
     // 시침 (10시 방향), 분침 (2시 방향)
-    g.lineStyle(2, 0x222255, 1);
+    g.lineStyle(2, 0x3a2a1a, 1);
     g.beginPath(); g.moveTo(cx, y + r); g.lineTo(cx - 9, y + r - 13); g.strokePath();
     g.beginPath(); g.moveTo(cx, y + r); g.lineTo(cx + 12, y + r - 10); g.strokePath();
-    g.fillStyle(0x333366); g.fillCircle(cx, y + r, 3); // 중심 핀
+    g.fillStyle(0x4a3a2a); g.fillCircle(cx, y + r, 3); // 중심 핀
   }
 
   /**
@@ -407,14 +408,14 @@ class LabScene extends Phaser.Scene {
     g.fillRect(cx - 14, cy - 2,  28,  4); // 스탠드 베이스
 
     // ── 키보드 ──
-    g.fillStyle(0x181826); g.fillRect(cx - 36, cy + 9, 50, 14); // 외관
-    g.fillStyle(0x222234); g.fillRect(cx - 34, cy + 11, 46, 10); // 키패드 영역
+    g.fillStyle(0x3a3028); g.fillRect(cx - 36, cy + 9, 50, 14); // 외관 (따뜻한 차콜)
+    g.fillStyle(0x4a4038); g.fillRect(cx - 34, cy + 11, 46, 10); // 키패드 영역
     for (let r = 0; r < 2; r++)
-      for (let k = 0; k < 8; k++) { g.fillStyle(0x2c2c42); g.fillRect(cx - 33 + k * 6, cy + 12 + r * 5, 5, 4); }
+      for (let k = 0; k < 8; k++) { g.fillStyle(0x5c5048); g.fillRect(cx - 33 + k * 6, cy + 12 + r * 5, 5, 4); }
 
     // ── 마우스 ──
-    g.fillStyle(0x1e1e2e); g.fillRect(cx + 26, cy + 9, 13, 18);
-    g.fillStyle(0x2a2a3e); g.fillRect(cx + 28, cy + 11, 9, 7); // 클릭 영역
+    g.fillStyle(0x382e28); g.fillRect(cx + 26, cy + 9, 13, 18);
+    g.fillStyle(0x48403a); g.fillRect(cx + 28, cy + 11, 9, 7); // 클릭 영역
 
     // ── 커피잔 ☕ ──
     g.fillStyle(0xcc8855); g.fillRect(cx + 52, cy + 4, 17, 21);  // 잔 본체
@@ -513,7 +514,7 @@ class LabScene extends Phaser.Scene {
 
     // ── 의자 ──
     g.fillStyle(C.chair, 1); g.fillRect(-20, -50, 40, 38); // 등받이
-    g.fillStyle(0x22244a, 1); g.fillRect(-18, -48, 36, 7);  // 등받이 상단 강조
+    g.fillStyle(0x8a7860, 1); g.fillRect(-18, -48, 36, 7);  // 등받이 상단 강조
     g.fillStyle(C.seat, 1);  g.fillRect(-17, -14, 34, 8);  // 방석
 
     // ── 몸 (셔츠) ──
@@ -665,19 +666,19 @@ class LabScene extends Phaser.Scene {
     // ── 바 배경 ──
     const bar = this.add.graphics().setDepth(20);
     bar.fillStyle(C.barBg, 0.97);  bar.fillRect(0, by, W, UI_H);
-    // 상단 경계선 (얇은 빛나는 선)
-    bar.lineStyle(1, 0x22226a, 1);  bar.beginPath(); bar.moveTo(0, by);     bar.lineTo(W, by);     bar.strokePath();
-    bar.lineStyle(1, 0x4444bb, 0.3); bar.beginPath(); bar.moveTo(0, by + 1); bar.lineTo(W, by + 1); bar.strokePath();
+    // 상단 경계선 (얇은 선)
+    bar.lineStyle(1, 0x5a4838, 1);  bar.beginPath(); bar.moveTo(0, by);     bar.lineTo(W, by);     bar.strokePath();
+    bar.lineStyle(1, 0x9a8070, 0.3); bar.beginPath(); bar.moveTo(0, by + 1); bar.lineTo(W, by + 1); bar.strokePath();
 
     // ── 접속자 표시 (왼쪽) ──
     // 맥박처럼 깜박이는 초록 점
-    const dot = this.add.circle(20, by + 22, 5, 0x33cc88).setDepth(21);
+    const dot = this.add.circle(20, by + 22, 5, 0x5c9060).setDepth(21);
     this.tweens.add({ targets: dot, alpha: { from: 0.4, to: 1 }, duration: 900, yoyo: true, repeat: -1 });
     this.countTxt = $t(this, 33, by + 22, '0명', 9, C.tGrn).setOrigin(0, 0.5).setDepth(21);
     $t(this, 33, by + 38, '접속 중', 6, C.tMut).setOrigin(0, 0.5).setDepth(21);
 
     // 버전 표시 (오른쪽 하단)
-    $t(this, W - 10, by + 8, 'v1.0', 6, '#22225a').setOrigin(1, 0).setDepth(21);
+    $t(this, W - 10, by + 8, 'v1.0', 6, '#7a6858').setOrigin(1, 0).setDepth(21);
 
     // ── 출근하기 버튼 (관찰자 모드에서 표시) ──
     const [ciB, ciL] = this._makeBtn(W / 2, by + 32, 210, 42, C.btnIn, C.btnInH, '출근하기', 11);
@@ -754,26 +755,26 @@ class LabScene extends Phaser.Scene {
 
     // ── 패널 (스케일+페이드 인 애니메이션) ──
     const pw = 440, ph = 280, px = W / 2, py = H / 2;
-    const panel = keep(this.add.rectangle(px, py, pw, ph, 0x0e0c28).setAlpha(0).setScale(0.88).setDepth(51));
+    const panel = keep(this.add.rectangle(px, py, pw, ph, 0x2a2218).setAlpha(0).setScale(0.88).setDepth(51));
     this.tweens.add({ targets: panel, alpha: 1, scaleX: 1, scaleY: 1, duration: 240, ease: 'Back.easeOut' });
 
     // ── 패널 테두리 ──
     const pbdr = keep(this.add.graphics().setDepth(51).setAlpha(0));
-    pbdr.lineStyle(2, 0x4444cc, 1);    pbdr.strokeRect(px - pw / 2, py - ph / 2, pw, ph);        // 외곽
-    pbdr.lineStyle(1, 0x8888dd, 0.22); pbdr.strokeRect(px - pw / 2 + 3, py - ph / 2 + 3, pw - 6, ph - 6); // 내곽
+    pbdr.lineStyle(2, 0x9a7a50, 1);    pbdr.strokeRect(px - pw / 2, py - ph / 2, pw, ph);        // 외곽 (웜 골드-브라운)
+    pbdr.lineStyle(1, 0xc0a070, 0.22); pbdr.strokeRect(px - pw / 2 + 3, py - ph / 2 + 3, pw - 6, ph - 6); // 내곽
     this.tweens.add({ targets: pbdr, alpha: 1, duration: 240 });
 
     // ── 코너 별 장식 ──
-    [[px - pw / 2 + 12, py - ph / 2 + 12, '✦', '#6666ee'],
-     [px + pw / 2 - 12, py - ph / 2 + 12, '✦', '#6666ee'],
-     [px - pw / 2 + 12, py + ph / 2 - 12, '✧', '#4444aa'],
-     [px + pw / 2 - 12, py + ph / 2 - 12, '✧', '#4444aa']].forEach(([cx, cy, s, col]) => {
+    [[px - pw / 2 + 12, py - ph / 2 + 12, '✦', '#c09860'],
+     [px + pw / 2 - 12, py - ph / 2 + 12, '✦', '#c09860'],
+     [px - pw / 2 + 12, py + ph / 2 - 12, '✧', '#9a7840'],
+     [px + pw / 2 - 12, py + ph / 2 - 12, '✧', '#9a7840']].forEach(([cx, cy, s, col]) => {
       const st = keep($t(this, cx, cy, s, 10, col).setOrigin(0.5).setDepth(52).setAlpha(0));
       this.tweens.add({ targets: st, alpha: 1, duration: 300, delay: 80 });
     });
 
     // ── 타이틀 ──
-    const title = keep($t(this, px, py - 102, '오늘도 출근! ✨', 13, '#c8c8ff').setOrigin(0.5).setDepth(52).setAlpha(0));
+    const title = keep($t(this, px, py - 102, '오늘도 출근! ✨', 13, '#f0e8d8').setOrigin(0.5).setDepth(52).setAlpha(0));
     this.tweens.add({ targets: title, alpha: 1, duration: 240, delay: 60 });
 
     const sub = keep($t(this, px, py - 76, '닉네임을 입력하세요', 7, C.tMut).setOrigin(0.5).setDepth(52).setAlpha(0));
@@ -785,8 +786,8 @@ class LabScene extends Phaser.Scene {
     const domEl = keep(this.add.dom(px, py - 24).createFromHTML(`
       <input id="ci" type="text" autocomplete="off" maxlength="8" placeholder="최대 8자"
         style="font-family:'Press Start 2P',monospace;font-size:16px;
-               background:transparent;color:#d0d0ff;
-               border:none;border-bottom:2px solid #5555cc;
+               background:transparent;color:#e8d8c0;
+               border:none;border-bottom:2px solid #9a7a50;
                padding:8px 12px;width:280px;text-align:center;
                outline:none;letter-spacing:3px;display:block;
                transform:scale(0.78);transform-origin:center;">
@@ -803,8 +804,8 @@ class LabScene extends Phaser.Scene {
 
     // ── 버튼 ──
     const btnY = py + 88;
-    const [okB, okL, okBd] = this._modalBtn(px - 68, btnY, 124, 40, 0x3838cc, 0x5555ee, '출근!', 9);
-    const [cnB, cnL, cnBd] = this._modalBtn(px + 68, btnY, 124, 40, 0x1a1830, 0x2a2448, '취소', 9);
+    const [okB, okL, okBd] = this._modalBtn(px - 68, btnY, 124, 40, 0x7a5c3a, 0x9a7a52, '출근!', 9);
+    const [cnB, cnL, cnBd] = this._modalBtn(px + 68, btnY, 124, 40, 0x2a2218, 0x3a3028, '취소', 9);
     // 버튼도 추적 배열에 추가 + 페이드 인
     [okB, okL, okBd, cnB, cnL, cnBd].forEach(o => {
       keep(o); o.setAlpha(0);
@@ -826,7 +827,7 @@ class LabScene extends Phaser.Scene {
   _modalBtn(x, y, w, h, fill, hover, label, fontSize) {
     const btn = this.add.rectangle(x, y, w, h, fill).setDepth(52).setInteractive({ useHandCursor: true });
     const bd  = this.add.graphics().setDepth(52);
-    bd.lineStyle(1, 0x8888cc, 0.25); bd.strokeRect(x - w / 2, y - h / 2, w, h);
+    bd.lineStyle(1, 0xb09070, 0.25); bd.strokeRect(x - w / 2, y - h / 2, w, h);
     const lbl = $t(this, x, y, label, fontSize, C.tPri).setOrigin(0.5).setDepth(53);
     btn.on('pointerover',  () => btn.setFillStyle(hover));
     btn.on('pointerout',   () => btn.setFillStyle(fill));
@@ -888,7 +889,7 @@ class LabScene extends Phaser.Scene {
   _toast(msg) {
     const t = $t(this, W / 2, H / 2 - 32, msg, 9, '#ffffff')
       .setOrigin(0.5).setDepth(60)
-      .setBackgroundColor('#33339966').setPadding(10, 6);
+      .setBackgroundColor('#2a221866').setPadding(10, 6);
     this.tweens.add({
       targets: t, y: H / 2 - 74,
       alpha: { from: 1, to: 0 },
@@ -903,7 +904,7 @@ class LabScene extends Phaser.Scene {
 new Phaser.Game({
   type: Phaser.AUTO,        // WebGL 우선, 미지원 시 Canvas로 폴백
   width: W, height: H,
-  backgroundColor: '#0c0b1e',
+  backgroundColor: '#f2ede6',
   parent: 'game-container', // index.html의 #game-container 에 캔버스 삽입
   dom: { createContainer: true }, // DOM 오브젝트(input 등) 사용 허용
   scene: [BootScene, LabScene],
