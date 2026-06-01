@@ -128,6 +128,12 @@ const $t = (sc, x, y, s, sz, col) =>
  */
 const $hex = s => parseInt((s ?? '#888888').replace('#', ''), 16);
 
+const EUNBIN = '이은빈';
+const eunbinTexture = s =>
+  s === 'away' ? 'eunbin_cry'
+  : (s === 'meeting' || s === 'experiment') ? 'eunbin_angry'
+  : 'eunbin_normal';
+
 // ─── BootScene ───────────────────────────────────────────────────────────────
 
 /**
@@ -136,6 +142,12 @@ const $hex = s => parseInt((s ?? '#888888').replace('#', ''), 16);
  */
 class BootScene extends Phaser.Scene {
   constructor() { super('Boot'); }
+
+  preload() {
+    ['normal', 'happy', 'cry', 'angry'].forEach(k =>
+      this.load.image(`eunbin_${k}`, `assets/eunbin_${k}.png`)
+    );
+  }
 
   create() {
     const g = this.add.graphics();
@@ -458,10 +470,27 @@ class LabScene extends Phaser.Scene {
     // 위치는 책상 상단(cx, cy)이 기준점(0,0). 모든 자식은 이 기준으로 그려짐.
     const container = this.add.container(cx, cy).setDepth(5);
 
-    // 캐릭터 몸체 (Graphics로 픽셀 아트 드로잉)
+    // 캐릭터 몸체
+    const hasSprite = user.name === EUNBIN && this.textures.exists('eunbin_normal');
     const g = this.add.graphics();
-    this._drawChar(g, col, STATUS_META[user.status]?.faceAway ?? false);
+    if (hasSprite) {
+      this._drawChair(g);
+    } else {
+      this._drawChar(g, col, STATUS_META[user.status]?.faceAway ?? false);
+    }
     container.add(g);
+
+    // 이은빈 전용 스프라이트
+    let sprite = null;
+    if (hasSprite) {
+      sprite = this.add.image(0, 0, 'eunbin_happy').setOrigin(0.5, 0.9).setScale(0.08);
+      container.add(sprite);
+      // 출근 직후 2.5초간 행복 표정, 이후 상태별 표정으로 전환
+      this.time.delayedCall(2500, () => {
+        const c = this.chars[user.name];
+        if (c?.sprite) c.sprite.setTexture(eunbinTexture(user.status));
+      });
+    }
 
     // ── 이름표 배경 (RoundedRect) ──
     const nw = user.name.length * 9 + 20; // 이름 길이에 따라 너비 동적 조정
@@ -502,7 +531,7 @@ class LabScene extends Phaser.Scene {
       ease: 'Sine.easeInOut',
     });
 
-    this.chars[user.name] = { container, g, tagG, nameTxt, timerTxt, msgG, msgTxt, tween };
+    this.chars[user.name] = { container, g, tagG, nameTxt, timerTxt, msgG, msgTxt, tween, sprite };
 
     // 초기 상태 적용
     this._applyStatus(user.name, user.status);
@@ -564,6 +593,14 @@ class LabScene extends Phaser.Scene {
     }
   }
 
+  /** 이은빈 전용: 의자만 그린다 (상체는 스프라이트로 표시). */
+  _drawChair(g) {
+    g.clear();
+    g.fillStyle(C.chair, 1); g.fillRect(-20, -50, 40, 38);
+    g.fillStyle(0x8a7860, 1); g.fillRect(-18, -48, 36, 7);
+    g.fillStyle(C.seat, 1);  g.fillRect(-17, -14, 34, 8);
+  }
+
   /**
    * 기존 캐릭터 상태를 업데이트한다.
    * 서버에서 state_sync를 받을 때마다 호출됨.
@@ -571,7 +608,11 @@ class LabScene extends Phaser.Scene {
   _updateChar(user) {
     const c = this.chars[user.name];
     if (!c) return;
-    this._drawChar(c.g, $hex(user.color), STATUS_META[user.status]?.faceAway ?? false); // 얼굴 재그리기
+    if (c.sprite) {
+      c.sprite.setTexture(eunbinTexture(user.status));
+    } else {
+      this._drawChar(c.g, $hex(user.color), STATUS_META[user.status]?.faceAway ?? false);
+    }
     this._applyStatus(user.name, user.status);                       // 투명도 적용
     user.message ? this._showMsg(user.name, user.message) : this._hideMsg(user.name);
   }
