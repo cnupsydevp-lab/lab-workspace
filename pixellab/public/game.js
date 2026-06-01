@@ -166,7 +166,14 @@ const expressionForStatus = (reg, status) => {
 const greetExpression = reg => (reg.expressions.includes('happy') ? 'happy' : 'normal');
 
 /** 스프라이트 캐릭터의 화면상 목표 높이(px). 원본 해상도와 무관하게 일정한 크기로 보이도록 스케일. */
-const SPRITE_TARGET_H = 122;
+const SPRITE_TARGET_H = 132;
+
+/**
+ * 스프라이트 발끝의 y 오프셋 (컨테이너 기준점에서). 양수일수록 발이 책상 깊숙이 들어감.
+ * 책상 영역은 0 ~ +76. 책상 상판(depth 10)이 캐릭터(depth 5)의 하반신을 가려
+ * 의자에 앉아 책상에 기댄 모습이 된다. 너무 크면 얼굴까지 가려지므로 적절히 조정.
+ */
+const SPRITE_FEET_OFFSET = 30;
 
 // ─── BootScene ───────────────────────────────────────────────────────────────
 
@@ -432,44 +439,47 @@ class LabScene extends Phaser.Scene {
 
   // ─── 책상 그리기 ─────────────────────────────────────────────────────────────
 
-  /** 모든 책상을 그린다. */
+  /**
+   * 모든 책상을 두 레이어로 그린다.
+   *   back(depth 1):  모니터 — 캐릭터(depth 5) 뒤로 보내 캐릭터 상체가 모니터를 가리게 한다.
+   *   front(depth 10): 책상 상판/다리/키보드/마우스/커피잔 — 캐릭터 앞에 그려 하반신을 가린다.
+   * 결과: 캐릭터가 의자에 앉아 모니터 앞에서 키보드에 손을 얹은 자세로 보인다.
+   */
   _drawDesks() {
-    const g = this.add.graphics();
-    DESKS.forEach(d => this._desk(g, d.x, d.y));
+    const back  = this.add.graphics().setDepth(1);
+    const front = this.add.graphics().setDepth(10);
+    DESKS.forEach(d => { this._deskBack(back, d.x, d.y); this._deskFront(front, d.x, d.y); });
   }
 
-  /**
-   * 책상 1개를 그린다. 모니터, 키보드, 마우스, 커피잔 포함.
-   * @param {Phaser.GameObjects.Graphics} g
-   * @param {number} cx  책상 중심 x
-   * @param {number} cy  책상 상단 y
-   */
-  _desk(g, cx, cy) {
+  /** 책상 뒷부분 — 모니터(프레임/화면/스탠드)만. 캐릭터 뒤로 들어간다. */
+  _deskBack(g, cx, cy) {
+    g.fillStyle(C.mon);  g.fillRect(cx - 24, cy - 44, 48, 36);
+    g.fillStyle(C.scr);  g.fillRect(cx - 21, cy - 41, 42, 30);
+    g.fillStyle(0x1a2888, 0.5); g.fillRect(cx - 18, cy - 38, 36,  8);
+    g.fillStyle(0x0a1040, 0.4); g.fillRect(cx - 18, cy - 30, 36, 18);
+    g.fillStyle(C.mon);
+    g.fillRect(cx - 5,  cy - 10, 10, 10);
+    g.fillRect(cx - 14, cy - 2,  28,  4);
+  }
+
+  /** 책상 앞부분 — 상판/다리/키보드/마우스/커피잔. 캐릭터 앞에 그려져 하반신을 가린다. */
+  _deskFront(g, cx, cy) {
     // ── 책상 상판 ──
     g.fillStyle(C.deskSurf);     g.fillRect(cx - DW / 2, cy, DW, DH);
-    g.fillStyle(C.deskHi);       g.fillRect(cx - DW / 2, cy, DW, 7);           // 상단 하이라이트
-    g.fillStyle(C.deskSha);      g.fillRect(cx - DW / 2, cy + DH - 4, DW, 4); // 하단 그림자
+    g.fillStyle(C.deskHi);       g.fillRect(cx - DW / 2, cy, DW, 7);
+    g.fillStyle(C.deskSha);      g.fillRect(cx - DW / 2, cy + DH - 4, DW, 4);
     g.fillStyle(C.deskSha, 0.4);
-    g.fillRect(cx - DW / 2, cy, 3, DH);      // 왼쪽 측면
-    g.fillRect(cx + DW / 2 - 3, cy, 3, DH); // 오른쪽 측면
+    g.fillRect(cx - DW / 2, cy, 3, DH);
+    g.fillRect(cx + DW / 2 - 3, cy, 3, DH);
 
     // ── 다리 ──
     g.fillStyle(C.deskLeg);
     g.fillRect(cx - DW / 2 + 7,  cy + DH, 10, 22);
     g.fillRect(cx + DW / 2 - 17, cy + DH, 10, 22);
 
-    // ── 모니터 ──
-    g.fillStyle(C.mon);  g.fillRect(cx - 24, cy - 44, 48, 36); // 프레임
-    g.fillStyle(C.scr);  g.fillRect(cx - 21, cy - 41, 42, 30); // 화면
-    g.fillStyle(0x1a2888, 0.5); g.fillRect(cx - 18, cy - 38, 36,  8); // 상단 글로우
-    g.fillStyle(0x0a1040, 0.4); g.fillRect(cx - 18, cy - 30, 36, 18); // 화면 내용 느낌
-    g.fillStyle(C.mon);
-    g.fillRect(cx - 5,  cy - 10, 10, 10); // 모니터 스탠드 기둥
-    g.fillRect(cx - 14, cy - 2,  28,  4); // 스탠드 베이스
-
     // ── 키보드 ──
-    g.fillStyle(0x3a3028); g.fillRect(cx - 36, cy + 9, 50, 14); // 외관 (따뜻한 차콜)
-    g.fillStyle(0x4a4038); g.fillRect(cx - 34, cy + 11, 46, 10); // 키패드 영역
+    g.fillStyle(0x3a3028); g.fillRect(cx - 36, cy + 9, 50, 14);
+    g.fillStyle(0x4a4038); g.fillRect(cx - 34, cy + 11, 46, 10);
     for (let r = 0; r < 2; r++)
       for (let k = 0; k < 8; k++) { g.fillStyle(0x5c5048); g.fillRect(cx - 33 + k * 6, cy + 12 + r * 5, 5, 4); }
 
@@ -511,17 +521,17 @@ class LabScene extends Phaser.Scene {
     const reg = CHARACTERS[user.name];
     const hasSprite = !!reg && this.textures.exists(charTexKey(reg.key, 'normal'));
     const g = this.add.graphics();
-    if (hasSprite) {
-      this._drawShadow(g);                                   // 서 있는 스프라이트용 바닥 그림자
-    } else {
+    if (!hasSprite) {
       this._drawChar(g, col, STATUS_META[user.status]?.faceAway ?? false);
     }
     container.add(g);
 
-    // 스프라이트 (등록 캐릭터 전용). origin 하단 중앙 → 발이 책상 앞쪽에 닿도록 배치.
+    // 스프라이트 (등록 캐릭터 전용).
+    // origin (0.5, 1) + y=SPRITE_FEET_OFFSET → 발이 책상 깊숙이 들어가 책상이 하반신을 가린다.
+    // 책상(depth 10) > 캐릭터(depth 5) 이므로 무릎 아래는 자연스럽게 책상 뒤로 숨김 = 의자에 앉은 모습.
     let sprite = null;
     if (hasSprite) {
-      sprite = this.add.image(0, 14, charTexKey(reg.key, greetExpression(reg))).setOrigin(0.5, 1);
+      sprite = this.add.image(0, SPRITE_FEET_OFFSET, charTexKey(reg.key, greetExpression(reg))).setOrigin(0.5, 1);
       if (sprite.height) sprite.setScale(SPRITE_TARGET_H / sprite.height);
       container.add(sprite);
       // 출근 직후 2.5초간 환영(happy) 표정, 이후 상태별 표정으로 전환
@@ -531,8 +541,8 @@ class LabScene extends Phaser.Scene {
       });
     }
 
-    // ── 이름표 배경 (RoundedRect) ── 스프라이트는 키가 커서 더 위에 띄운다.
-    const tagBase = hasSprite ? -150 : -92;
+    // ── 이름표 배경 (RoundedRect) ── 스프라이트는 책상 뒤에 앉아 머리가 더 위로 올라가므로 더 띄운다.
+    const tagBase = hasSprite ? -100 : -92;
     const nw = user.name.length * 9 + 20; // 이름 길이에 따라 너비 동적 조정
     const tagG = this.add.graphics();
     tagG.fillStyle(0x000000, 0.68);
@@ -631,13 +641,6 @@ class LabScene extends Phaser.Scene {
       g.fillStyle(0xcc9977, 1);
       g.fillRect(-3, -34, 6, 2);
     }
-  }
-
-  /** 서 있는 스프라이트 캐릭터용: 발밑 바닥 그림자만 그린다. */
-  _drawShadow(g) {
-    g.clear();
-    g.fillStyle(0x000000, 0.18);
-    g.fillEllipse(0, 18, 58, 16);
   }
 
   /**

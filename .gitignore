@@ -3,3 +3,6 @@ npm-debug.log*
 .env
 .DS_Store
 pixellab/data/
+
+# 컨테이너 내부 캡처용 임시 vendor (실 환경은 CDN 사용)
+pixellab/public/vendor/
