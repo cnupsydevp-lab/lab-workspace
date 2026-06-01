@@ -99,6 +99,15 @@ const C = {
   tYel: '#c09840', // 경고/강조 (웜 앰버)
 };
 
+const STATUS_META = {
+  working:    { label: '작업중', short: '작업', alpha: 1,    faceAway: false },
+  away:       { label: '자리비움', short: '비움', alpha: 0.42, faceAway: true },
+  meeting:    { label: '회의중', short: '회의', alpha: 0.65, faceAway: true },
+  experiment: { label: '실험중', short: '실험', alpha: 0.85, faceAway: false },
+};
+
+const STATUS_FLOW = ['working', 'away', 'meeting', 'experiment'];
+
 // ─── 헬퍼 함수 ───────────────────────────────────────────────────────────────
 
 /**
@@ -162,7 +171,7 @@ class BootScene extends Phaser.Scene {
  *
  * 내부 상태:
  *   myName  현재 접속자 닉네임. null이면 관찰자 모드.
- *   isAway  자리비움 여부.
+ *   myStatus  현재 접속자의 상태.
  *   users   서버에서 받은 현재 접속자 배열.
  *   chars   이름 → 캐릭터 오브젝트 맵.
  */
@@ -173,10 +182,11 @@ class LabScene extends Phaser.Scene {
   init({ socket }) {
     this.socket = socket;
     this.myName = null;   // null = 관찰자 모드 (출근 전)
-    this.isAway = false;
+    this.myStatus = 'working';
     this.users  = [];
     this.chars  = {};     // 이름 → { container, g, timerTxt, msgG, msgTxt, tween, ... }
     this._modal = null;   // 출근 모달 오브젝트. null이면 닫힌 상태.
+    this._pendingCheckinOk = null;
   }
 
   create() {
@@ -194,6 +204,7 @@ class LabScene extends Phaser.Scene {
     this.events.once('shutdown', () => {
       this.socket.off('state_sync', onState);
       this.socket.off('lab_error',  onErr);
+      if (this._pendingCheckinOk) this.socket.off('check_in_ok', this._pendingCheckinOk);
     });
 
     // 1초마다 타이머 갱신 (캐릭터 위 업무 시간 표시)
@@ -449,7 +460,7 @@ class LabScene extends Phaser.Scene {
 
     // 캐릭터 몸체 (Graphics로 픽셀 아트 드로잉)
     const g = this.add.graphics();
-    this._drawChar(g, col, user.status === 'away');
+    this._drawChar(g, col, STATUS_META[user.status]?.faceAway ?? false);
     container.add(g);
 
     // ── 이름표 배경 (RoundedRect) ──
@@ -494,7 +505,7 @@ class LabScene extends Phaser.Scene {
     this.chars[user.name] = { container, g, tagG, nameTxt, timerTxt, msgG, msgTxt, tween };
 
     // 초기 상태 적용
-    this._applyAway(user.name, user.status === 'away');
+    this._applyStatus(user.name, user.status);
     if (user.message) this._showMsg(user.name, user.message);
   }
 
@@ -560,8 +571,8 @@ class LabScene extends Phaser.Scene {
   _updateChar(user) {
     const c = this.chars[user.name];
     if (!c) return;
-    this._drawChar(c.g, $hex(user.color), user.status === 'away'); // 얼굴 재그리기
-    this._applyAway(user.name, user.status === 'away');             // 투명도 적용
+    this._drawChar(c.g, $hex(user.color), STATUS_META[user.status]?.faceAway ?? false); // 얼굴 재그리기
+    this._applyStatus(user.name, user.status);                       // 투명도 적용
     user.message ? this._showMsg(user.name, user.message) : this._hideMsg(user.name);
   }
 
@@ -578,12 +589,11 @@ class LabScene extends Phaser.Scene {
   }
 
   /**
-   * 자리비움 상태에 따라 캐릭터 투명도를 조절한다.
-   * away=true이면 반투명하게 (0.42), 일반이면 불투명 (1).
+   * 상태에 따라 캐릭터 투명도를 조절한다.
    */
-  _applyAway(name, away) {
+  _applyStatus(name, status) {
     const c = this.chars[name];
-    if (c) c.container.setAlpha(away ? 0.42 : 1);
+    if (c) c.container.setAlpha(STATUS_META[status]?.alpha ?? 1);
   }
 
   /**
@@ -630,11 +640,13 @@ class LabScene extends Phaser.Scene {
     // 신규 추가 또는 상태 업데이트
     users.forEach(u => this.chars[u.name] ? this._updateChar(u) : this._addChar(u));
 
-    // 내 자리비움 상태가 서버와 다르면 동기화
+    // 내 상태가 서버와 다르면 동기화
     const me = this.myName && users.find(u => u.name === this.myName);
     if (me) {
-      const away = me.status === 'away';
-      if (this.isAway !== away) { this.isAway = away; this._refreshAwayBtn(); }
+      if (this.myStatus !== me.status) {
+        this.myStatus = me.status;
+        this._refreshStatusBtn();
+      }
     }
   }
 
@@ -653,7 +665,8 @@ class LabScene extends Phaser.Scene {
       if (u.status === 'working' && u.checkInTime) s += Math.floor((now - u.checkInTime) / 1000);
       const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
       const p = n => String(n).padStart(2, '0');
-      c.timerTxt.setText(h > 0 ? `${p(h)}:${p(m)}:${p(ss)}` : `${p(m)}:${p(ss)}`);
+      const elapsed = h > 0 ? `${p(h)}:${p(m)}:${p(ss)}` : `${p(m)}:${p(ss)}`;
+      c.timerTxt.setText(`${STATUS_META[u.status]?.label ?? u.status} ${elapsed}`);
     });
   }
 
@@ -685,19 +698,19 @@ class LabScene extends Phaser.Scene {
     ciB.on('pointerdown', () => this._openModal());
     this._ciG = [ciB, ciL]; // 관찰자 모드 버튼 그룹
 
-    // ── 자리비움 버튼 (근무 중 모드에서 표시) ──
-    const [awB, awL] = this._makeBtn(W / 2 - 108, by + 32, 182, 42, C.btnAway, C.btnAwayA, '자리비움', 10);
-    awB.on('pointerdown', () => {
-      this.isAway = !this.isAway;
-      this.socket.emit(this.isAway ? 'set_away' : 'set_back');
-      this._refreshAwayBtn();
+    // ── 상태 변경 버튼 (근무 중 모드에서 표시) ──
+    const [stB, stL] = this._makeBtn(W / 2 - 108, by + 32, 182, 42, C.btnAway, C.btnAwayA, '상태:작업', 9);
+    stB.on('pointerdown', () => {
+      this.myStatus = this._nextStatus(this.myStatus);
+      this.socket.emit('set_status', { status: this.myStatus });
+      this._refreshStatusBtn();
     });
-    this.awB = awB; this.awL = awL;
+    this.stB = stB; this.stL = stL;
 
     // ── 퇴근하기 버튼 ──
     const [outB, outL] = this._makeBtn(W - 112, by + 32, 186, 42, C.btnOut, C.btnOutH, '퇴근하기', 10);
     outB.on('pointerdown', () => this._checkout());
-    this._wkG = [awB, awL, outB, outL]; // 근무 중 버튼 그룹
+    this._wkG = [stB, stL, outB, outL]; // 근무 중 버튼 그룹
 
     this._setMode('observer'); // 초기: 관찰자 모드
   }
@@ -719,10 +732,16 @@ class LabScene extends Phaser.Scene {
     return [btn, lbl];
   }
 
-  /** 자리비움 버튼 텍스트/색상을 현재 isAway 상태에 맞게 갱신한다. */
-  _refreshAwayBtn() {
-    this.awB?.setFillStyle(this.isAway ? C.btnAwayA : C.btnAway);
-    this.awL?.setText(this.isAway ? '돌아오기' : '자리비움');
+  _nextStatus(status) {
+    const idx = STATUS_FLOW.indexOf(status);
+    return STATUS_FLOW[(idx + 1) % STATUS_FLOW.length] ?? 'working';
+  }
+
+  /** 상태 버튼 텍스트/색상을 현재 상태에 맞게 갱신한다. */
+  _refreshStatusBtn() {
+    const working = this.myStatus === 'working';
+    this.stB?.setFillStyle(working ? C.btnAway : C.btnAwayA);
+    this.stL?.setText(`상태:${STATUS_META[this.myStatus]?.short ?? this.myStatus}`);
   }
 
   /**
@@ -847,7 +866,7 @@ class LabScene extends Phaser.Scene {
 
   /**
    * 닉네임을 서버에 전송하고 출근을 시도한다.
-   * 서버에서 state_sync로 내 이름이 확인되면 근무 모드로 전환.
+   * 서버에서 check_in_ok를 받으면 근무 모드로 전환.
    */
   _submitCheckin() {
     const el   = document.getElementById('ci');
@@ -856,31 +875,37 @@ class LabScene extends Phaser.Scene {
       if (this._modal?.errTxt) this._modal.errTxt.setText('닉네임을 입력해주세요');
       return;
     }
-    this.socket.emit('check_in', { name });
+    if (this._pendingCheckinOk) this.socket.off('check_in_ok', this._pendingCheckinOk);
 
-    // 내 이름이 state_sync에 등장하면 출근 완료로 간주
-    const wait = users => {
-      if (users.find(u => u.name === name)) {
-        this.socket.off('state_sync', wait); // 임시 리스너 해제
-        this.myName = name; this.isAway = false;
-        this._closeModal();
-        this._setMode('worker');
-        this._toast(`${name}님, 오늘도 화이팅! ✨`);
-      }
+    const onOk = ({ name: acceptedName }) => {
+      this._pendingCheckinOk = null;
+      this.myName = acceptedName; this.myStatus = 'working';
+      this._closeModal();
+      this._setMode('worker');
+      this._refreshStatusBtn();
+      this._toast(`${acceptedName}님, 오늘도 화이팅! ✨`);
     };
-    this.socket.on('state_sync', wait);
+    this._pendingCheckinOk = onOk;
+    this.socket.once('check_in_ok', onOk);
+    this.socket.emit('check_in', { name });
   }
 
   /** 퇴근 처리. 캐릭터를 제거하고 관찰자 모드로 돌아간다. */
   _checkout() {
     this.socket.emit('check_out');
-    this.myName = null; this.isAway = false;
-    this._refreshAwayBtn();
+    this.myName = null; this.myStatus = 'working';
+    this._refreshStatusBtn();
     this._setMode('observer');
   }
 
   /** 서버 에러 메시지를 모달 안에 표시한다 (예: 자리 꽉 참). */
-  _labErr(msg) { if (this._modal?.errTxt) this._modal.errTxt.setText(msg); }
+  _labErr(msg) {
+    if (this._pendingCheckinOk) {
+      this.socket.off('check_in_ok', this._pendingCheckinOk);
+      this._pendingCheckinOk = null;
+    }
+    if (this._modal?.errTxt) this._modal.errTxt.setText(msg);
+  }
 
   /**
    * 화면 중앙에 잠깐 나타났다 사라지는 알림 메시지.
