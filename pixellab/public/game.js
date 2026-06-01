@@ -128,11 +128,45 @@ const $t = (sc, x, y, s, sz, col) =>
  */
 const $hex = s => parseInt((s ?? '#888888').replace('#', ''), 16);
 
-const EUNBIN = '이은빈';
-const eunbinTexture = s =>
-  s === 'away' ? 'eunbin_cry'
-  : (s === 'meeting' || s === 'experiment') ? 'eunbin_angry'
-  : 'eunbin_normal';
+/**
+ * 캐릭터 레지스트리 — 닉네임(한글) → 스프라이트 에셋 정의.
+ * 이미지 경로: public/assets/characters/<key>/<expression>.png  (폴더·파일명 모두 영어)
+ *
+ *   key          에셋 폴더명 (영어 소문자)
+ *   expressions  보유 표정 목록. 'normal'은 필수(기본/작업중 얼굴).
+ *                선택: 'happy'(출근 환영), 'cry'(자리비움), 'angry'(회의·실험)
+ *
+ * 새 캐릭터 추가(최대 9명):
+ *   1) public/assets/characters/<key>/ 폴더 생성
+ *   2) normal.png (+ happy/cry/angry) 추가
+ *   3) 아래에 한 줄 추가:  '닉네임': { key: '<key>', expressions: [...] }
+ */
+const CHARACTERS = {
+  '이은빈': { key: 'eunbin', expressions: ['normal', 'happy', 'cry'] },
+  // '홍길동': { key: 'gildong', expressions: ['normal', 'happy', 'cry', 'angry'] },
+};
+
+/** 캐릭터 표정 이미지의 Phaser 텍스처 키. */
+const charTexKey = (key, expr) => `char_${key}_${expr}`;
+
+/**
+ * 상태 → 표정 결정. 보유하지 않은 표정은 'normal'로 폴백.
+ *   away               → cry
+ *   meeting/experiment → angry
+ *   그 외(working 등)   → normal
+ */
+const expressionForStatus = (reg, status) => {
+  const want = status === 'away' ? 'cry'
+    : (status === 'meeting' || status === 'experiment') ? 'angry'
+    : 'normal';
+  return reg.expressions.includes(want) ? want : 'normal';
+};
+
+/** 출근 직후 환영 표정 (happy 있으면 happy, 없으면 normal). */
+const greetExpression = reg => (reg.expressions.includes('happy') ? 'happy' : 'normal');
+
+/** 스프라이트 캐릭터의 화면상 목표 높이(px). 원본 해상도와 무관하게 일정한 크기로 보이도록 스케일. */
+const SPRITE_TARGET_H = 122;
 
 // ─── BootScene ───────────────────────────────────────────────────────────────
 
@@ -144,8 +178,11 @@ class BootScene extends Phaser.Scene {
   constructor() { super('Boot'); }
 
   preload() {
-    ['normal', 'happy', 'cry', 'angry'].forEach(k =>
-      this.load.image(`eunbin_${k}`, `assets/eunbin_${k}.png`)
+    // 등록된 모든 캐릭터의 표정 이미지를 로드 (파일이 없으면 자동으로 도형 캐릭터로 폴백)
+    Object.values(CHARACTERS).forEach(reg =>
+      reg.expressions.forEach(expr =>
+        this.load.image(charTexKey(reg.key, expr), `assets/characters/${reg.key}/${expr}.png`)
+      )
     );
   }
 
@@ -470,43 +507,46 @@ class LabScene extends Phaser.Scene {
     // 위치는 책상 상단(cx, cy)이 기준점(0,0). 모든 자식은 이 기준으로 그려짐.
     const container = this.add.container(cx, cy).setDepth(5);
 
-    // 캐릭터 몸체
-    const hasSprite = user.name === EUNBIN && this.textures.exists('eunbin_normal');
+    // 캐릭터 몸체 — 레지스트리에 등록되고 이미지가 있으면 스프라이트, 아니면 도형으로 그린다.
+    const reg = CHARACTERS[user.name];
+    const hasSprite = !!reg && this.textures.exists(charTexKey(reg.key, 'normal'));
     const g = this.add.graphics();
     if (hasSprite) {
-      this._drawChair(g);
+      this._drawShadow(g);                                   // 서 있는 스프라이트용 바닥 그림자
     } else {
       this._drawChar(g, col, STATUS_META[user.status]?.faceAway ?? false);
     }
     container.add(g);
 
-    // 이은빈 전용 스프라이트
+    // 스프라이트 (등록 캐릭터 전용). origin 하단 중앙 → 발이 책상 앞쪽에 닿도록 배치.
     let sprite = null;
     if (hasSprite) {
-      sprite = this.add.image(0, 0, 'eunbin_happy').setOrigin(0.5, 0.9).setScale(0.08);
+      sprite = this.add.image(0, 14, charTexKey(reg.key, greetExpression(reg))).setOrigin(0.5, 1);
+      if (sprite.height) sprite.setScale(SPRITE_TARGET_H / sprite.height);
       container.add(sprite);
-      // 출근 직후 2.5초간 행복 표정, 이후 상태별 표정으로 전환
+      // 출근 직후 2.5초간 환영(happy) 표정, 이후 상태별 표정으로 전환
       this.time.delayedCall(2500, () => {
         const c = this.chars[user.name];
-        if (c?.sprite) c.sprite.setTexture(eunbinTexture(user.status));
+        if (c?.sprite) this._setSpriteExpr(c, reg.key, expressionForStatus(reg, user.status));
       });
     }
 
-    // ── 이름표 배경 (RoundedRect) ──
+    // ── 이름표 배경 (RoundedRect) ── 스프라이트는 키가 커서 더 위에 띄운다.
+    const tagBase = hasSprite ? -150 : -92;
     const nw = user.name.length * 9 + 20; // 이름 길이에 따라 너비 동적 조정
     const tagG = this.add.graphics();
     tagG.fillStyle(0x000000, 0.68);
-    tagG.fillRoundedRect(-nw / 2, -92, nw, 20, 3);  // 배경
+    tagG.fillRoundedRect(-nw / 2, tagBase, nw, 20, 3);  // 배경
     tagG.lineStyle(1, col, 0.5);
-    tagG.strokeRoundedRect(-nw / 2, -92, nw, 20, 3); // 색상 테두리
+    tagG.strokeRoundedRect(-nw / 2, tagBase, nw, 20, 3); // 색상 테두리
 
-    const nameTxt = this.add.text(0, -82, user.name, {
+    const nameTxt = this.add.text(0, tagBase + 10, user.name, {
       fontFamily: '"Press Start 2P"', fontSize: 7, color: user.color, resolution: 2,
     }).setOrigin(0.5, 1);
     container.add([tagG, nameTxt]);
 
     // ── 타이머 텍스트 (MM:SS 또는 HH:MM:SS) ──
-    const timerTxt = this.add.text(0, -68, '00:00', {
+    const timerTxt = this.add.text(0, tagBase + 24, '00:00', {
       fontFamily: '"Press Start 2P"', fontSize: 6, color: C.tMut, resolution: 2,
     }).setOrigin(0.5, 1);
     container.add(timerTxt);
@@ -531,7 +571,7 @@ class LabScene extends Phaser.Scene {
       ease: 'Sine.easeInOut',
     });
 
-    this.chars[user.name] = { container, g, tagG, nameTxt, timerTxt, msgG, msgTxt, tween, sprite };
+    this.chars[user.name] = { container, g, tagG, nameTxt, timerTxt, msgG, msgTxt, tween, sprite, charKey: reg ? reg.key : null };
 
     // 초기 상태 적용
     this._applyStatus(user.name, user.status);
@@ -593,12 +633,23 @@ class LabScene extends Phaser.Scene {
     }
   }
 
-  /** 이은빈 전용: 의자만 그린다 (상체는 스프라이트로 표시). */
-  _drawChair(g) {
+  /** 서 있는 스프라이트 캐릭터용: 발밑 바닥 그림자만 그린다. */
+  _drawShadow(g) {
     g.clear();
-    g.fillStyle(C.chair, 1); g.fillRect(-20, -50, 40, 38);
-    g.fillStyle(0x8a7860, 1); g.fillRect(-18, -48, 36, 7);
-    g.fillStyle(C.seat, 1);  g.fillRect(-17, -14, 34, 8);
+    g.fillStyle(0x000000, 0.18);
+    g.fillEllipse(0, 18, 58, 16);
+  }
+
+  /**
+   * 스프라이트 캐릭터의 표정을 바꾸고 목표 높이에 맞춰 스케일을 재계산한다.
+   * (표정 이미지마다 원본 크기가 달라도 화면상 크기를 일정하게 유지)
+   */
+  _setSpriteExpr(c, key, expr) {
+    if (!c?.sprite) return;
+    const tex = charTexKey(key, expr);
+    if (!this.textures.exists(tex)) return;   // 이미지 없으면 현재 표정 유지
+    c.sprite.setTexture(tex);
+    if (c.sprite.height) c.sprite.setScale(SPRITE_TARGET_H / c.sprite.height);
   }
 
   /**
@@ -608,8 +659,8 @@ class LabScene extends Phaser.Scene {
   _updateChar(user) {
     const c = this.chars[user.name];
     if (!c) return;
-    if (c.sprite) {
-      c.sprite.setTexture(eunbinTexture(user.status));
+    if (c.sprite && c.charKey) {
+      this._setSpriteExpr(c, c.charKey, expressionForStatus(CHARACTERS[user.name], user.status));
     } else {
       this._drawChar(c.g, $hex(user.color), STATUS_META[user.status]?.faceAway ?? false);
     }
