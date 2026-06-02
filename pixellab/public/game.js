@@ -54,6 +54,10 @@ const DW = 186, DH = 54;
 /** 캐릭터 이동 속도 (px/초). */
 const SPEED = 180;
 
+/** 캐릭터 최대 depth ≈ (H - UI_H) + 14 ≈ 590. UI/모달은 그보다 위에 그린다. */
+const Z_UI    = 600;
+const Z_MODAL = 720;
+
 /**
  * 전체 컬러 팔레트.
  * 연구실/UI/캐릭터에서 공통으로 사용.
@@ -919,7 +923,7 @@ class LabScene extends Phaser.Scene {
     const by = H - UI_H; // 바 상단 y 좌표
 
     // ── 바 배경 ──
-    const bar = this.add.graphics().setDepth(20);
+    const bar = this.add.graphics().setDepth(Z_UI);
     bar.fillStyle(C.barBg, 0.97);  bar.fillRect(0, by, W, UI_H);
     // 상단 경계선 (얇은 선)
     bar.lineStyle(1, 0x5a4838, 1);  bar.beginPath(); bar.moveTo(0, by);     bar.lineTo(W, by);     bar.strokePath();
@@ -927,13 +931,13 @@ class LabScene extends Phaser.Scene {
 
     // ── 접속자 표시 (왼쪽) ──
     // 맥박처럼 깜박이는 초록 점
-    const dot = this.add.circle(20, by + 22, 5, 0x5c9060).setDepth(21);
+    const dot = this.add.circle(20, by + 22, 5, 0x5c9060).setDepth(Z_UI + 1);
     this.tweens.add({ targets: dot, alpha: { from: 0.4, to: 1 }, duration: 900, yoyo: true, repeat: -1 });
-    this.countTxt = $t(this, 33, by + 22, '0명', 9, C.tGrn).setOrigin(0, 0.5).setDepth(21);
-    $t(this, 33, by + 38, '접속 중', 6, C.tMut).setOrigin(0, 0.5).setDepth(21);
+    this.countTxt = $t(this, 33, by + 22, '0명', 9, C.tGrn).setOrigin(0, 0.5).setDepth(Z_UI + 1);
+    $t(this, 33, by + 38, '접속 중', 6, C.tMut).setOrigin(0, 0.5).setDepth(Z_UI + 1);
 
     // 버전 표시 (오른쪽 하단)
-    $t(this, W - 10, by + 8, 'v1.0', 6, '#7a6858').setOrigin(1, 0).setDepth(21);
+    $t(this, W - 10, by + 8, 'v1.0', 6, '#7a6858').setOrigin(1, 0).setDepth(Z_UI + 1);
 
     // ── 출근하기 버튼 (관찰자 모드에서 표시) ──
     const [ciB, ciL] = this._makeBtn(W / 2, by + 32, 210, 42, C.btnIn, C.btnInH, '출근하기', 11);
@@ -962,11 +966,11 @@ class LabScene extends Phaser.Scene {
    * @returns {[Rectangle, Text]}  버튼 배경 + 레이블
    */
   _makeBtn(x, y, w, h, fill, hover, label, fontSize) {
-    const btn = this.add.rectangle(x, y, w, h, fill).setDepth(21).setInteractive({ useHandCursor: true });
+    const btn = this.add.rectangle(x, y, w, h, fill).setDepth(Z_UI + 1).setInteractive({ useHandCursor: true });
     // 픽셀 테두리 (흰색 반투명 선)
-    const bd  = this.add.graphics().setDepth(21);
+    const bd  = this.add.graphics().setDepth(Z_UI + 1);
     bd.lineStyle(1, 0xffffff, 0.1); bd.strokeRect(x - w / 2 + 1, y - h / 2 + 1, w - 2, h - 2);
-    const lbl = $t(this, x, y, label, fontSize, C.tPri).setOrigin(0.5).setDepth(22);
+    const lbl = $t(this, x, y, label, fontSize, C.tPri).setOrigin(0.5).setDepth(Z_UI + 2);
     btn.on('pointerover',  () => btn.setFillStyle(hover));     // 호버: 밝아짐
     btn.on('pointerout',   () => btn.setFillStyle(fill));      // 호버 해제
     btn.on('pointerdown',  () => btn.setScale(0.96));          // 클릭: 약간 축소
@@ -1011,16 +1015,16 @@ class LabScene extends Phaser.Scene {
     const keep = o => { objs.push(o); return o; };
 
     // ── 어두운 오버레이 (클릭 차단 + 페이드 인) ──
-    const ov = keep(this.add.rectangle(W / 2, H / 2, W, H, 0x000000).setAlpha(0).setDepth(50).setInteractive());
+    const ov = keep(this.add.rectangle(W / 2, H / 2, W, H, 0x000000).setAlpha(0).setDepth(Z_MODAL).setInteractive());
     this.tweens.add({ targets: ov, alpha: 0.76, duration: 200 });
 
     // ── 패널 (스케일+페이드 인 애니메이션) ──
     const pw = 440, ph = 280, px = W / 2, py = H / 2;
-    const panel = keep(this.add.rectangle(px, py, pw, ph, 0x2a2218).setAlpha(0).setScale(0.88).setDepth(51));
+    const panel = keep(this.add.rectangle(px, py, pw, ph, 0x2a2218).setAlpha(0).setScale(0.88).setDepth(Z_MODAL + 1));
     this.tweens.add({ targets: panel, alpha: 1, scaleX: 1, scaleY: 1, duration: 240, ease: 'Back.easeOut' });
 
     // ── 패널 테두리 ──
-    const pbdr = keep(this.add.graphics().setDepth(51).setAlpha(0));
+    const pbdr = keep(this.add.graphics().setDepth(Z_MODAL + 1).setAlpha(0));
     pbdr.lineStyle(2, 0x9a7a50, 1);    pbdr.strokeRect(px - pw / 2, py - ph / 2, pw, ph);        // 외곽 (웜 골드-브라운)
     pbdr.lineStyle(1, 0xc0a070, 0.22); pbdr.strokeRect(px - pw / 2 + 3, py - ph / 2 + 3, pw - 6, ph - 6); // 내곽
     this.tweens.add({ targets: pbdr, alpha: 1, duration: 240 });
@@ -1030,15 +1034,15 @@ class LabScene extends Phaser.Scene {
      [px + pw / 2 - 12, py - ph / 2 + 12, '✦', '#c09860'],
      [px - pw / 2 + 12, py + ph / 2 - 12, '✧', '#9a7840'],
      [px + pw / 2 - 12, py + ph / 2 - 12, '✧', '#9a7840']].forEach(([cx, cy, s, col]) => {
-      const st = keep($t(this, cx, cy, s, 10, col).setOrigin(0.5).setDepth(52).setAlpha(0));
+      const st = keep($t(this, cx, cy, s, 10, col).setOrigin(0.5).setDepth(Z_MODAL + 2).setAlpha(0));
       this.tweens.add({ targets: st, alpha: 1, duration: 300, delay: 80 });
     });
 
     // ── 타이틀 ──
-    const title = keep($t(this, px, py - 102, '오늘도 출근! ✨', 13, '#f0e8d8').setOrigin(0.5).setDepth(52).setAlpha(0));
+    const title = keep($t(this, px, py - 102, '오늘도 출근! ✨', 13, '#f0e8d8').setOrigin(0.5).setDepth(Z_MODAL + 2).setAlpha(0));
     this.tweens.add({ targets: title, alpha: 1, duration: 240, delay: 60 });
 
-    const sub = keep($t(this, px, py - 76, '닉네임을 입력하세요', 7, C.tMut).setOrigin(0.5).setDepth(52).setAlpha(0));
+    const sub = keep($t(this, px, py - 76, '닉네임을 입력하세요', 7, C.tMut).setOrigin(0.5).setDepth(Z_MODAL + 2).setAlpha(0));
     this.tweens.add({ targets: sub, alpha: 1, duration: 240, delay: 100 });
 
     // ── 닉네임 입력 필드 (DOM) ──
@@ -1052,7 +1056,7 @@ class LabScene extends Phaser.Scene {
                padding:8px 12px;width:280px;text-align:center;
                outline:none;letter-spacing:3px;display:block;
                transform:scale(0.78);transform-origin:center;">
-    `).setDepth(52));
+    `).setDepth(Z_MODAL + 2));
     // Enter: 출근 시도 / Escape: 모달 닫기
     domEl.addListener('keydown').on('keydown', e => {
       if (e.key === 'Enter')  this._submitCheckin();
@@ -1061,7 +1065,7 @@ class LabScene extends Phaser.Scene {
     });
 
     // ── 오류 메시지 텍스트 ──
-    const errTxt = keep($t(this, px, py + 24, '', 7, '#ff7777').setOrigin(0.5).setDepth(52));
+    const errTxt = keep($t(this, px, py + 24, '', 7, '#ff7777').setOrigin(0.5).setDepth(Z_MODAL + 2));
 
     // ── 버튼 ──
     const btnY = py + 88;
@@ -1086,10 +1090,10 @@ class LabScene extends Phaser.Scene {
    * @returns {[Rectangle, Text, Graphics]}  배경, 레이블, 테두리
    */
   _modalBtn(x, y, w, h, fill, hover, label, fontSize) {
-    const btn = this.add.rectangle(x, y, w, h, fill).setDepth(52).setInteractive({ useHandCursor: true });
-    const bd  = this.add.graphics().setDepth(52);
+    const btn = this.add.rectangle(x, y, w, h, fill).setDepth(Z_MODAL + 2).setInteractive({ useHandCursor: true });
+    const bd  = this.add.graphics().setDepth(Z_MODAL + 2);
     bd.lineStyle(1, 0xb09070, 0.25); bd.strokeRect(x - w / 2, y - h / 2, w, h);
-    const lbl = $t(this, x, y, label, fontSize, C.tPri).setOrigin(0.5).setDepth(53);
+    const lbl = $t(this, x, y, label, fontSize, C.tPri).setOrigin(0.5).setDepth(Z_MODAL + 3);
     btn.on('pointerover',  () => btn.setFillStyle(hover));
     btn.on('pointerout',   () => btn.setFillStyle(fill));
     btn.on('pointerdown',  () => btn.setScale(0.95));
@@ -1155,7 +1159,7 @@ class LabScene extends Phaser.Scene {
    */
   _toast(msg) {
     const t = $t(this, W / 2, H / 2 - 32, msg, 9, '#ffffff')
-      .setOrigin(0.5).setDepth(60)
+      .setOrigin(0.5).setDepth(Z_MODAL + 10)
       .setBackgroundColor('#2a221866').setPadding(10, 6);
     this.tweens.add({
       targets: t, y: H / 2 - 74,
