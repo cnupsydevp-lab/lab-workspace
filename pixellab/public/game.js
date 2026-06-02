@@ -265,6 +265,7 @@ class LabScene extends Phaser.Scene {
     this._pendingCheckinOk = null;
     this._keys = null;    // 키보드 입력 오브젝트
     this._wasMoving = false;
+    this._lastMoveEmit = 0;
   }
 
   create() {
@@ -281,13 +282,22 @@ class LabScene extends Phaser.Scene {
     // 서버 이벤트 수신 등록
     const onState = u => this._sync(u);    // 전체 상태 갱신
     const onErr   = m => this._labErr(m);  // 에러 메시지 (모달 안에 표시)
+    const onMove  = ({ name, x, y }) => {  // 다른 사용자 실시간 이동 수신
+      const c = this.chars[name];
+      if (!c || name === this.myName) return;
+      c.container.x = x;
+      c.container.y = y;
+      c.container.setDepth(Math.round(y) + 14);
+    };
     this.socket.on('state_sync', onState);
     this.socket.on('lab_error',  onErr);
+    this.socket.on('player_move', onMove);
 
     // 씬 종료 시 이벤트 리스너 정리 (메모리 누수 방지)
     this.events.once('shutdown', () => {
       this.socket.off('state_sync', onState);
       this.socket.off('lab_error',  onErr);
+      this.socket.off('player_move', onMove);
       if (this._pendingCheckinOk) this.socket.off('check_in_ok', this._pendingCheckinOk);
     });
 
@@ -365,6 +375,11 @@ class LabScene extends Phaser.Scene {
     cont.x = nx; cont.y = ny;
     // y 기반 depth: 앞에 있을수록(y 클수록) 높은 depth
     cont.setDepth(Math.round(cont.y) + 14);
+    // 이동 위치를 서버로 전송 (20fps 쓰로틀)
+    if (time - this._lastMoveEmit > 50) {
+      this.socket.emit('move', { x: cont.x, y: cont.y });
+      this._lastMoveEmit = time;
+    }
 
     // 방향 walk 애니메이션 (working 상태일 때만)
     if (this.myStatus !== 'working') return;
@@ -662,11 +677,14 @@ class LabScene extends Phaser.Scene {
 
     const { x: cx, y: cy } = pos;
     const col = $hex(user.color);
+    // 서버에 저장된 위치가 있으면 그 위치(이미 이동한 경우), 없으면 책상 위치
+    const initX = (typeof user.x === 'number') ? user.x : cx;
+    const initY = (typeof user.y === 'number') ? user.y : cy;
 
     // Container: 이 캐릭터의 모든 Phaser 오브젝트를 담는 그룹.
     // 위치는 책상 상단(cx, cy)이 기준점(0,0). 모든 자식은 이 기준으로 그려짐.
     // depth = y + foot_offset → 이동 시 y-sort 기반 자동 깊이 정렬
-    const container = this.add.container(cx, cy).setDepth(cy + 14);
+    const container = this.add.container(initX, initY).setDepth(initY + 14);
 
     // 캐릭터 몸체 — 레지스트리에 등록되고 이미지가 있으면 스프라이트, 아니면 도형으로 그린다.
     const reg = CHARACTERS[user.name];
@@ -725,16 +743,15 @@ class LabScene extends Phaser.Scene {
     }).setOrigin(0.5, 1).setVisible(false);
     container.add([msgG, msgTxt]);
 
-    // ── 떠다니는 idle 애니메이션 ──
-    // 사람마다 약간 다른 주기로 위아래로 미세하게 움직임 (생동감)
-    const tween = this.tweens.add({
-      targets: container,
-      y: cy - 3,          // 위로 3px
-      yoyo: true,         // 왔다갔다
-      repeat: -1,         // 무한 반복
-      duration: 1400 + Math.random() * 700,
-      ease: 'Sine.easeInOut',
-    });
+    // ── 떠다니는 idle 애니메이션 (내 캐릭터만) ──
+    // 다른 사람 캐릭터는 player_move로 위치가 갱신되므로 tween을 걸면 위치가 충돌함
+    const tween = user.name === this.myName
+      ? this.tweens.add({
+          targets: container, y: initY - 3,
+          yoyo: true, repeat: -1,
+          duration: 1400 + Math.random() * 700, ease: 'Sine.easeInOut',
+        })
+      : null;
 
     this.chars[user.name] = { container, g, tagG, nameTxt, timerTxt, msgG, msgTxt, tween, sprite, charKey: reg ? reg.key : null };
 

@@ -115,6 +115,8 @@ function snapshot() {
     checkInTime: u.checkInTime,
     totalToday: u.totalToday,
     message: u.message,
+    x: u.x,
+    y: u.y,
   }));
 }
 
@@ -212,6 +214,8 @@ io.on('connection', (socket) => {
       totalToday: 0,
       message: null,
       msgTimer: null,
+      x: null,
+      y: null,
     };
     desks[desk] = socket.id;
 
@@ -257,6 +261,14 @@ io.on('connection', (socket) => {
         io.emit('state_sync', snapshot());
       }
     }, 5000);
+  });
+
+  socket.on('move', ({ x, y }) => {
+    const user = users[socket.id];
+    if (!user || typeof x !== 'number' || typeof y !== 'number') return;
+    user.x = x;
+    user.y = y;
+    socket.broadcast.emit('player_move', { name: user.name, x, y });
   });
 
   socket.on('disconnect', () => {
