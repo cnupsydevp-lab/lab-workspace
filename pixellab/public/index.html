@@ -9,50 +9,1208 @@
   <title>PPAI Lab Pixel</title>
   <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
   <style>
-    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    *, *::before, *::after { box-sizing: border-box; }
+
+    :root {
+      --bg: #ece8e2;
+      --panel: #221d19;
+      --panel-2: #2d2621;
+      --line: #4e4037;
+      --text: #f2ede6;
+      --muted: #aa9a8a;
+      --green: #6ca16f;
+      --amber: #c79b46;
+      --red: #b85a52;
+      --status-working: #78b47d;
+      --status-away: #c7ad7a;
+      --status-meeting: #7da4d8;
+      --status-experiment: #76c2ba;
+      --panel-w: clamp(320px, 26vw, 400px);
+      --font-pixel: "Press Start 2P", ui-monospace, SFMono-Regular, Consolas, monospace;
+      --font-ui: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
 
     html, body {
-      width: 100%; height: 100%;
-      overflow: hidden;
-      background: #ece8e2;
-      touch-action: none;
-      -webkit-tap-highlight-color: transparent;
-      user-select: none;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
     }
 
     body {
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      overflow: hidden;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    button, input {
+      font: inherit;
+    }
+
+    #app-shell {
+      width: 100vw;
+      height: 100dvh;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) var(--panel-w);
+      background:
+        linear-gradient(90deg, rgba(34, 29, 25, 0.08), transparent 22%),
+        var(--bg);
+    }
+
+    #lab-stage {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      place-items: center;
+      padding: clamp(10px, 2vw, 24px);
+      overflow: hidden;
+      position: relative;
+      touch-action: none;
+      user-select: none;
     }
 
     #game-container {
-      width: 100%; height: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      width: min(100%, calc((100dvh - clamp(20px, 4vw, 48px)) * 1.5));
+      height: auto;
+      max-width: 100%;
+      max-height: calc(100dvh - clamp(20px, 4vw, 48px));
+      aspect-ratio: 960 / 640;
+      display: grid;
+      place-items: center;
+      position: relative;
+      overflow: hidden;
     }
 
     #game-container canvas {
       image-rendering: pixelated;
       image-rendering: crisp-edges;
       display: block;
-      max-width: 100vw;
-      max-height: 100vh;
+      width: 100% !important;
+      height: 100% !important;
+      max-width: 100%;
+      max-height: 100%;
     }
 
-    /* 모바일 iOS 자동 줌 방지 (font-size 16px 필요, transform으로 시각 크기 조정) */
+    #workspace-panel {
+      min-width: 0;
+      height: 100dvh;
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      border-left: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow: -12px 0 24px rgba(34, 29, 25, 0.18);
+      overflow: hidden;
+    }
+
+    .panel-head {
+      padding: 18px 18px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .panel-title {
+      margin: 0;
+      font-family: var(--font-pixel);
+      font-size: clamp(13px, 1.4vw, 17px);
+      line-height: 1.5;
+      color: var(--text);
+    }
+
+    .panel-subtitle {
+      margin: 8px 0 0;
+      font-family: var(--font-ui);
+      font-size: 13px;
+      line-height: 1.4;
+      color: var(--muted);
+    }
+
+    #panel-tabs {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 6px;
+      padding: 10px;
+      border-bottom: 1px solid var(--line);
+      background: #1b1714;
+    }
+
+    .panel-tab {
+      min-width: 0;
+      min-height: 40px;
+      border: 1px solid #5c4b3f;
+      background: var(--panel-2);
+      color: var(--muted);
+      font-family: var(--font-ui);
+      font-size: 13px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .panel-tab[aria-selected="true"] {
+      color: var(--text);
+      border-color: var(--amber);
+      background: #3a3028;
+    }
+
+    #panel-content {
+      min-height: 0;
+      overflow: auto;
+      padding: 14px;
+      scrollbar-color: #6e5a4a #1b1714;
+    }
+
+    .panel-view {
+      display: none;
+      gap: 12px;
+    }
+
+    .panel-view.active {
+      display: grid;
+    }
+
+    .mini-card {
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      border-radius: 8px;
+      padding: 14px;
+    }
+
+    .mini-label {
+      margin: 0 0 10px;
+      font-family: var(--font-ui);
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+
+    .mini-value {
+      margin: 0;
+      font-family: var(--font-ui);
+      font-size: clamp(17px, 1.5vw, 20px);
+      font-weight: 800;
+      line-height: 1.45;
+      color: var(--text);
+      overflow-wrap: anywhere;
+    }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .status-pill {
+      min-height: 64px;
+      display: grid;
+      align-content: center;
+      justify-items: start;
+      gap: 6px;
+      border: 1px solid #5a4a3e;
+      border-left: 4px solid #5a4a3e;
+      border-radius: 7px;
+      padding: 10px;
+      background: #25201c;
+    }
+
+    .status-pill[data-status="working"] { border-left-color: var(--status-working); }
+    .status-pill[data-status="away"] { border-left-color: var(--status-away); }
+    .status-pill[data-status="meeting"] { border-left-color: var(--status-meeting); }
+    .status-pill[data-status="experiment"] { border-left-color: var(--status-experiment); }
+
+    .status-pill strong {
+      font-family: var(--font-ui);
+      font-size: 20px;
+      font-weight: 850;
+      line-height: 1.2;
+    }
+
+    .status-pill span {
+      font-family: var(--font-ui);
+      font-size: 13px;
+      font-weight: 650;
+      color: var(--muted);
+    }
+
+    .member-row {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 9px;
+    }
+
+    .member-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--green);
+      box-shadow: 0 0 0 2px rgba(242, 237, 230, 0.08);
+    }
+
+    .member-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .member-status {
+      border: 1px solid #5a4a3e;
+      border-radius: 999px;
+      padding: 3px 7px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+      white-space: nowrap;
+    }
+
+    .member-status.status-working { color: var(--status-working); border-color: rgba(120, 180, 125, 0.42); }
+    .member-status.status-away { color: var(--status-away); border-color: rgba(199, 173, 122, 0.42); }
+    .member-status.status-meeting { color: var(--status-meeting); border-color: rgba(125, 164, 216, 0.42); }
+    .member-status.status-experiment { color: var(--status-experiment); border-color: rgba(118, 194, 186, 0.42); }
+
+    .list-stack {
+      display: grid;
+      gap: 8px;
+    }
+
+    .list-row {
+      min-height: 44px;
+      display: grid;
+      align-items: center;
+      border: 1px solid #4e4037;
+      border-radius: 6px;
+      padding: 10px 12px;
+      background: #251f1b;
+      font-family: var(--font-ui);
+      font-size: 15px;
+      font-weight: 650;
+      color: var(--text);
+    }
+
+    .todo-row {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 9px;
+    }
+
+    .todo-row.done .todo-text {
+      color: var(--muted);
+      text-decoration: line-through;
+    }
+
+    .todo-text {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .todo-meta {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .form-stack {
+      display: grid;
+      gap: 8px;
+    }
+
+    .panel-input,
+    .panel-select,
+    .panel-textarea {
+      width: 100%;
+      border: 1px solid #5c4b3f;
+      border-radius: 6px;
+      background: #171412;
+      color: var(--text);
+      font-family: var(--font-ui);
+      font-size: 14px;
+      font-weight: 650;
+      outline: none;
+    }
+
+    .panel-input,
+    .panel-select {
+      min-height: 40px;
+      padding: 0 10px;
+    }
+
+    .panel-textarea {
+      min-height: 72px;
+      resize: vertical;
+      padding: 10px;
+      line-height: 1.45;
+    }
+
+    .panel-button {
+      min-height: 40px;
+      border: 1px solid #6e5a4a;
+      border-radius: 6px;
+      background: #3a3028;
+      color: var(--text);
+      font-family: var(--font-ui);
+      font-size: 14px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .panel-button.primary {
+      background: #7a5c3a;
+      border-color: #b89462;
+    }
+
+    .panel-button.icon {
+      width: 34px;
+      min-height: 34px;
+      padding: 0;
+      color: var(--muted);
+      background: #241f1a;
+    }
+
+    .message-log {
+      max-height: 180px;
+      overflow: auto;
+    }
+
+    .message-row {
+      align-items: start;
+      gap: 4px;
+    }
+
+    .message-row.sent {
+      border-color: rgba(120, 180, 125, 0.35);
+    }
+
+    .message-row.received {
+      border-color: rgba(125, 164, 216, 0.35);
+    }
+
+    .message-meta {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .message-text {
+      overflow-wrap: anywhere;
+    }
+
+    .notice-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .notice-row {
+      align-items: start;
+      gap: 6px;
+    }
+
+    .notice-title {
+      font-weight: 850;
+    }
+
+    .notice-body {
+      color: #d8cec2;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+
+    .timer-face {
+      min-height: 96px;
+      display: grid;
+      place-items: center;
+      border: 1px solid #5c4b3f;
+      border-radius: 8px;
+      background: #171412;
+      font-family: var(--font-pixel);
+      font-size: clamp(24px, 4vw, 36px);
+      color: var(--green);
+    }
+
+    .panel-actions {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .tool-button {
+      min-height: 38px;
+      border: 1px solid #5c4b3f;
+      border-radius: 6px;
+      background: #302821;
+      color: var(--text);
+      font-family: var(--font-ui);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
     input[type="text"] {
       -webkit-appearance: none;
-      border-radius: 0;
       font-size: 16px !important;
-      transform-origin: center;
-      transform: scale(0.78);
+    }
+
+    #checkin-modal {
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      background: rgba(12, 10, 8, 0.68);
+    }
+
+    #checkin-modal[hidden] {
+      display: none;
+    }
+
+    .checkin-dialog {
+      width: min(372px, 100%);
+      border: 2px solid #9a7a50;
+      background: #241c15;
+      box-shadow: 0 18px 36px rgba(0, 0, 0, 0.32);
+      padding: 22px;
+    }
+
+    .checkin-title {
+      margin: 0;
+      font-family: var(--font-pixel);
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--text);
+      text-align: center;
+    }
+
+    .checkin-subtitle {
+      margin: 8px 0 18px;
+      font-family: var(--font-ui);
+      font-size: 13px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    #checkin-name {
+      width: 100%;
+      height: 46px;
+      border: 2px solid #9a7a50;
+      border-radius: 4px;
+      background: #17130f;
+      color: var(--text);
+      outline: none;
+      padding: 0 14px;
+      text-align: center;
+      font-family: var(--font-ui);
+      font-size: 16px;
+      font-weight: 700;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+    }
+
+    #checkin-name:focus {
+      border-color: var(--amber);
+    }
+
+    .checkin-error {
+      min-height: 20px;
+      margin: 10px 0 14px;
+      color: #ff8f87;
+      font-family: var(--font-ui);
+      font-size: 13px;
+      text-align: center;
+    }
+
+    .checkin-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .checkin-button {
+      min-height: 42px;
+      border: 1px solid #7f674d;
+      border-radius: 4px;
+      background: #30251b;
+      color: var(--text);
+      font-family: var(--font-ui);
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .checkin-button.primary {
+      background: #8a6840;
+      border-color: #b89462;
+    }
+
+    #lab-action-bar {
+      position: absolute;
+      left: clamp(118px, 15vw, 150px);
+      right: 12px;
+      bottom: 12px;
+      z-index: 12;
+      pointer-events: none;
+    }
+
+    .lab-action-set {
+      display: grid;
+      align-items: center;
+      gap: 10px;
+      pointer-events: auto;
+    }
+
+    .lab-action-set[hidden] {
+      display: none;
+    }
+
+    .lab-action-set.observer {
+      grid-template-columns: minmax(190px, 260px);
+      justify-content: center;
+    }
+
+    .lab-action-set.worker {
+      grid-template-columns: minmax(0, 1fr) 140px;
+    }
+
+    .status-selector {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .lab-action-button {
+      min-height: 44px;
+      border: 1px solid #6e5a4a;
+      border-radius: 6px;
+      background: #302821;
+      color: var(--text);
+      font-family: var(--font-ui);
+      font-size: 15px;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+    }
+
+    .lab-action-button.primary {
+      background: #7a5c3a;
+      border-color: #b89462;
+      font-size: 17px;
+    }
+
+    .lab-action-button.danger {
+      background: #7c3030;
+      border-color: #b4635f;
+    }
+
+    .lab-action-button[data-status="working"] { border-color: rgba(120, 180, 125, 0.55); }
+    .lab-action-button[data-status="away"] { border-color: rgba(199, 173, 122, 0.55); }
+    .lab-action-button[data-status="meeting"] { border-color: rgba(125, 164, 216, 0.55); }
+    .lab-action-button[data-status="experiment"] { border-color: rgba(118, 194, 186, 0.55); }
+
+    .lab-action-button[aria-pressed="true"] {
+      color: #11100e;
+    }
+
+    .lab-action-button[data-status="working"][aria-pressed="true"] { background: var(--status-working); }
+    .lab-action-button[data-status="away"][aria-pressed="true"] { background: var(--status-away); }
+    .lab-action-button[data-status="meeting"][aria-pressed="true"] { background: var(--status-meeting); }
+    .lab-action-button[data-status="experiment"][aria-pressed="true"] { background: var(--status-experiment); }
+
+    @media (max-width: 1023px) {
+      #app-shell {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(280px, 56dvh) minmax(260px, 44dvh);
+        overflow: hidden;
+      }
+
+      #lab-stage {
+        padding: 10px;
+      }
+
+      #game-container {
+        width: min(100%, calc((56dvh - 20px) * 1.5));
+        max-height: calc(56dvh - 20px);
+      }
+
+      #workspace-panel {
+        height: auto;
+        min-height: 0;
+        border-left: 0;
+        border-top: 1px solid var(--line);
+        box-shadow: 0 -10px 20px rgba(34, 29, 25, 0.16);
+      }
+
+      .panel-head {
+        display: none;
+      }
+    }
+
+    @media (max-width: 520px) {
+      #app-shell {
+        grid-template-rows: minmax(230px, 48dvh) minmax(300px, 52dvh);
+      }
+
+      #game-container {
+        width: min(100%, calc((48dvh - 20px) * 1.5));
+        max-height: calc(48dvh - 20px);
+      }
+
+      #panel-tabs {
+        gap: 4px;
+        padding: 8px;
+      }
+
+      .panel-tab {
+        min-height: 38px;
+        font-size: 12px;
+      }
+
+      #panel-content {
+        padding: 10px;
+      }
+
+      #lab-action-bar {
+        left: 10px;
+        right: 10px;
+        bottom: 10px;
+      }
+
+      .lab-action-set.worker {
+        grid-template-columns: 1fr;
+      }
+
+      .status-selector {
+        gap: 5px;
+      }
+
+      .lab-action-button {
+        min-height: 40px;
+        font-size: 13px;
+      }
     }
   </style>
 </head>
 <body>
-  <div id="game-container"></div>
+  <div id="app-shell">
+    <main id="lab-stage" aria-label="연구실 현황">
+      <div id="game-container"></div>
+      <div id="lab-action-bar" aria-label="연구실 조작">
+        <div class="lab-action-set observer" id="observer-actions">
+          <button class="lab-action-button primary" type="button" id="action-checkin">출근하기</button>
+        </div>
+        <div class="lab-action-set worker" id="worker-actions" hidden>
+          <div class="status-selector" aria-label="상태 선택">
+            <button class="lab-action-button" type="button" data-action-status="working" data-status="working" aria-pressed="true">작업</button>
+            <button class="lab-action-button" type="button" data-action-status="away" data-status="away" aria-pressed="false">비움</button>
+            <button class="lab-action-button" type="button" data-action-status="meeting" data-status="meeting" aria-pressed="false">회의</button>
+            <button class="lab-action-button" type="button" data-action-status="experiment" data-status="experiment" aria-pressed="false">실험</button>
+          </div>
+          <button class="lab-action-button danger" type="button" id="action-checkout">퇴근</button>
+        </div>
+      </div>
+      <div id="checkin-modal" hidden role="dialog" aria-modal="true" aria-labelledby="checkin-title">
+        <form class="checkin-dialog" id="checkin-form">
+          <h2 class="checkin-title" id="checkin-title">오늘도 출근!</h2>
+          <p class="checkin-subtitle">닉네임을 입력하세요.</p>
+          <input id="checkin-name" type="text" autocomplete="off" maxlength="8" placeholder="최대 8자">
+          <p class="checkin-error" id="checkin-error" aria-live="polite"></p>
+          <div class="checkin-actions">
+            <button class="checkin-button primary" type="submit">출근</button>
+            <button class="checkin-button" type="button" id="checkin-cancel">취소</button>
+          </div>
+        </form>
+      </div>
+    </main>
+
+    <aside id="workspace-panel" aria-label="워크스페이스 패널">
+      <header class="panel-head">
+        <h1 class="panel-title">PPAI Lab</h1>
+        <p class="panel-subtitle">workspace board</p>
+      </header>
+
+      <nav id="panel-tabs" aria-label="소형 기능">
+        <button class="panel-tab" type="button" data-panel="overview" aria-selected="true">현황</button>
+        <button class="panel-tab" type="button" data-panel="notice" aria-selected="false">공지</button>
+        <button class="panel-tab" type="button" data-panel="message" aria-selected="false">메시지</button>
+        <button class="panel-tab" type="button" data-panel="todo" aria-selected="false">투두</button>
+        <button class="panel-tab" type="button" data-panel="timer" aria-selected="false">타이머</button>
+      </nav>
+
+      <div id="panel-content">
+        <section class="panel-view active" data-view="overview">
+          <div class="mini-card">
+            <p class="mini-label">현재 상태</p>
+            <div class="status-grid">
+              <div class="status-pill"><strong id="lab-user-count">0명</strong><span>출근</span></div>
+              <div class="status-pill" data-status="working"><strong id="lab-working-count">0명</strong><span>작업중</span></div>
+              <div class="status-pill" data-status="away"><strong id="lab-away-count">0명</strong><span>자리비움</span></div>
+              <div class="status-pill" data-status="meeting"><strong id="lab-meeting-count">0명</strong><span>회의중</span></div>
+              <div class="status-pill" data-status="experiment"><strong id="lab-experiment-count">0명</strong><span>실험중</span></div>
+            </div>
+          </div>
+          <div class="mini-card">
+            <p class="mini-label">출근자</p>
+            <div class="list-stack" id="lab-member-list">
+              <div class="list-row">아직 출근한 사람이 없습니다.</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel-view" data-view="notice">
+          <div class="mini-card">
+            <p class="mini-label">공지 등록</p>
+            <form class="form-stack" id="notice-form">
+              <input class="panel-input" id="notice-title-input" type="text" maxlength="60" placeholder="공지 제목">
+              <textarea class="panel-textarea" id="notice-body-input" maxlength="240" placeholder="공지 내용"></textarea>
+              <button class="panel-button primary" type="submit">공지 추가</button>
+            </form>
+          </div>
+          <div class="mini-card">
+            <p class="mini-label">공지 목록</p>
+            <div class="notice-list" id="notice-list">
+              <div class="list-row">공지를 불러오는 중입니다.</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel-view" data-view="message">
+          <div class="mini-card">
+            <p class="mini-label">내 말풍선</p>
+            <form class="form-stack" id="bubble-form">
+              <input class="panel-input" id="bubble-input" type="text" maxlength="32" placeholder="예: 분석 중, 3시에 복귀">
+              <button class="panel-button primary" type="submit">말풍선 등록</button>
+              <button class="panel-button" type="button" id="bubble-clear">말풍선 지우기</button>
+            </form>
+          </div>
+          <div class="mini-card">
+            <p class="mini-label">개인 메시지</p>
+            <form class="form-stack" id="direct-form">
+              <select class="panel-select" id="direct-target">
+                <option value="">출근한 구성원 선택</option>
+              </select>
+              <textarea class="panel-textarea" id="direct-message" maxlength="160" placeholder="개인에게 보낼 메시지"></textarea>
+              <button class="panel-button primary" type="submit">보내기</button>
+            </form>
+          </div>
+          <div class="mini-card">
+            <p class="mini-label">메시지 로그</p>
+            <div class="list-stack message-log" id="message-log">
+              <div class="list-row">아직 메시지가 없습니다.</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel-view" data-view="todo">
+          <div class="mini-card">
+            <p class="mini-label">공유 투두</p>
+            <form class="form-stack" id="todo-form">
+              <input class="panel-input" id="todo-input" type="text" maxlength="100" placeholder="새 투두 입력">
+              <input class="panel-input" id="todo-owner-input" type="text" maxlength="24" placeholder="담당자 또는 팀">
+              <input class="panel-input" id="todo-due-input" type="date" aria-label="마감일">
+              <button class="panel-button primary" type="submit">추가</button>
+            </form>
+          </div>
+          <div class="mini-card">
+            <p class="mini-label">할 일 목록</p>
+            <div class="list-stack" id="todo-list">
+              <div class="list-row">투두를 불러오는 중입니다.</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel-view" data-view="timer">
+          <div class="mini-card">
+            <p class="mini-label">집중 타이머</p>
+            <div class="timer-face">25:00</div>
+          </div>
+          <div class="panel-actions">
+            <button class="tool-button" type="button">시작</button>
+            <button class="tool-button" type="button">정지</button>
+            <button class="tool-button" type="button">초기화</button>
+          </div>
+        </section>
+
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    const statusMeta = {
+      working: { label: '작업중', color: '#78b47d' },
+      away: { label: '자리비움', color: '#c7ad7a' },
+      meeting: { label: '회의중', color: '#7da4d8' },
+      experiment: { label: '실험중', color: '#76c2ba' },
+    };
+
+    const setText = (id, value) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = value;
+    };
+
+    const renderPresencePanel = users => {
+      activeUsers = Array.isArray(users) ? users : [];
+      renderDirectTargets();
+      const countByStatus = activeUsers.reduce((acc, user) => {
+        acc[user.status] = (acc[user.status] ?? 0) + 1;
+        return acc;
+      }, {});
+
+      setText('lab-user-count', `${activeUsers.length}명`);
+      setText('lab-working-count', `${countByStatus.working ?? 0}명`);
+      setText('lab-away-count', `${countByStatus.away ?? 0}명`);
+      setText('lab-meeting-count', `${countByStatus.meeting ?? 0}명`);
+      setText('lab-experiment-count', `${countByStatus.experiment ?? 0}명`);
+
+      const list = document.getElementById('lab-member-list');
+      if (!list) return;
+
+      if (activeUsers.length === 0) {
+        list.innerHTML = '<div class="list-row">아직 출근한 사람이 없습니다.</div>';
+        return;
+      }
+
+      list.innerHTML = '';
+      activeUsers.forEach(user => {
+        const row = document.createElement('div');
+        row.className = 'list-row member-row';
+
+        const meta = statusMeta[user.status] || { label: user.status || '상태 없음', color: '#aa9a8a' };
+
+        const dot = document.createElement('span');
+        dot.className = 'member-dot';
+        dot.style.background = meta.color;
+
+        const name = document.createElement('span');
+        name.className = 'member-name';
+        name.textContent = user.name || '이름 없음';
+
+        const status = document.createElement('span');
+        status.className = `member-status status-${user.status}`;
+        status.textContent = meta.label;
+
+        row.append(dot, name, status);
+        list.append(row);
+      });
+    };
+
+    window.addEventListener('lab:state', event => {
+      renderPresencePanel(event.detail?.users);
+    });
+
+    const checkinModal = document.getElementById('checkin-modal');
+    const checkinForm = document.getElementById('checkin-form');
+    const checkinName = document.getElementById('checkin-name');
+    const checkinError = document.getElementById('checkin-error');
+    const checkinCancel = document.getElementById('checkin-cancel');
+    const observerActions = document.getElementById('observer-actions');
+    const workerActions = document.getElementById('worker-actions');
+    const actionCheckin = document.getElementById('action-checkin');
+    const actionCheckout = document.getElementById('action-checkout');
+    const checkinCallbacks = { submit: null, cancel: null };
+    const actionCallbacks = { checkin: null, status: null, checkout: null };
+    const workspaceCallbacks = {
+      bubble: null,
+      clearBubble: null,
+      directMessage: null,
+      todoAdd: null,
+      todoToggle: null,
+      todoDelete: null,
+      noticeAdd: null,
+      noticeDelete: null,
+    };
+    let activeUsers = [];
+    let currentUserName = null;
+    let messageLog = [];
+
+    const renderDirectTargets = () => {
+      const select = document.getElementById('direct-target');
+      if (!select) return;
+      const currentValue = select.value;
+      select.innerHTML = '<option value="">출근한 구성원 선택</option>';
+      activeUsers.filter(user => user.name !== currentUserName).forEach(user => {
+        const option = document.createElement('option');
+        option.value = user.name;
+        option.textContent = user.name;
+        select.append(option);
+      });
+      if (activeUsers.some(user => user.name === currentValue)) select.value = currentValue;
+    };
+
+    const closeCheckinModal = ({ callCancel = false } = {}) => {
+      if (!checkinModal) return;
+      checkinModal.hidden = true;
+      checkinName.value = '';
+      checkinError.textContent = '';
+      const cancel = checkinCallbacks.cancel;
+      checkinCallbacks.submit = null;
+      checkinCallbacks.cancel = null;
+      if (callCancel && cancel) cancel();
+    };
+
+    window.LabUI = {
+      openCheckinModal({ onSubmit, onCancel } = {}) {
+        checkinCallbacks.submit = onSubmit;
+        checkinCallbacks.cancel = onCancel;
+        checkinError.textContent = '';
+        checkinModal.hidden = false;
+        window.setTimeout(() => checkinName.focus(), 40);
+      },
+      closeCheckinModal,
+      setCheckinError(message) {
+        checkinError.textContent = message || '';
+      },
+      bindActions({ onCheckin, onStatus, onCheckout } = {}) {
+        actionCallbacks.checkin = onCheckin;
+        actionCallbacks.status = onStatus;
+        actionCallbacks.checkout = onCheckout;
+      },
+      bindWorkspace({
+        onBubble,
+        onClearBubble,
+        onDirectMessage,
+        onTodoAdd,
+        onTodoToggle,
+        onTodoDelete,
+        onNoticeAdd,
+        onNoticeDelete,
+      } = {}) {
+        workspaceCallbacks.bubble = onBubble;
+        workspaceCallbacks.clearBubble = onClearBubble;
+        workspaceCallbacks.directMessage = onDirectMessage;
+        workspaceCallbacks.todoAdd = onTodoAdd;
+        workspaceCallbacks.todoToggle = onTodoToggle;
+        workspaceCallbacks.todoDelete = onTodoDelete;
+        workspaceCallbacks.noticeAdd = onNoticeAdd;
+        workspaceCallbacks.noticeDelete = onNoticeDelete;
+      },
+      setCurrentUser(name) {
+        currentUserName = name;
+        renderDirectTargets();
+      },
+      setPresenceMode(mode) {
+        const isWorker = mode === 'worker';
+        observerActions.hidden = isWorker;
+        workerActions.hidden = !isWorker;
+      },
+      setActiveStatus(status) {
+        document.querySelectorAll('[data-action-status]').forEach(button => {
+          button.setAttribute('aria-pressed', String(button.dataset.actionStatus === status));
+        });
+      },
+    };
+
+    const renderMessages = () => {
+      const list = document.getElementById('message-log');
+      if (!list) return;
+      if (messageLog.length === 0) {
+        list.innerHTML = '<div class="list-row">아직 메시지가 없습니다.</div>';
+        return;
+      }
+      list.innerHTML = '';
+      messageLog.slice(0, 20).forEach(item => {
+        const row = document.createElement('div');
+        row.className = `list-row message-row ${item.direction === 'sent' ? 'sent' : 'received'}`;
+
+        const meta = document.createElement('div');
+        meta.className = 'message-meta';
+        meta.textContent = item.direction === 'sent'
+          ? `나 -> ${item.to}`
+          : `${item.from} -> 나`;
+
+        const text = document.createElement('div');
+        text.className = 'message-text';
+        text.textContent = item.message;
+
+        row.append(meta, text);
+        list.append(row);
+      });
+    };
+
+    const renderTodos = todos => {
+      const list = document.getElementById('todo-list');
+      if (!list) return;
+      const items = Array.isArray(todos) ? todos : [];
+      if (items.length === 0) {
+        list.innerHTML = '<div class="list-row">등록된 할 일이 없습니다.</div>';
+        return;
+      }
+      list.innerHTML = '';
+      items.forEach(todo => {
+        const row = document.createElement('div');
+        row.className = `list-row todo-row${todo.done ? ' done' : ''}`;
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = Boolean(todo.done);
+        checkbox.addEventListener('change', () => {
+          workspaceCallbacks.todoToggle?.({ id: todo.id, done: checkbox.checked });
+        });
+
+        const body = document.createElement('div');
+        const text = document.createElement('div');
+        text.className = 'todo-text';
+        text.textContent = todo.text;
+        const meta = document.createElement('div');
+        meta.className = 'todo-meta';
+        const details = [];
+        if (todo.owner) details.push(`담당: ${todo.owner}`);
+        if (todo.due) details.push(`마감: ${todo.due}`);
+        meta.textContent = details.join(' · ') || '담당 없음';
+        body.append(text, meta);
+
+        const remove = document.createElement('button');
+        remove.className = 'panel-button icon';
+        remove.type = 'button';
+        remove.textContent = '×';
+        remove.setAttribute('aria-label', `${todo.text} 삭제`);
+        remove.addEventListener('click', () => {
+          workspaceCallbacks.todoDelete?.({ id: todo.id });
+        });
+
+        row.append(checkbox, body, remove);
+        list.append(row);
+      });
+    };
+
+    const renderNotices = notices => {
+      const list = document.getElementById('notice-list');
+      if (!list) return;
+      const items = Array.isArray(notices) ? notices : [];
+      if (items.length === 0) {
+        list.innerHTML = '<div class="list-row">등록된 공지가 없습니다.</div>';
+        return;
+      }
+      list.innerHTML = '';
+      items.forEach(notice => {
+        const row = document.createElement('div');
+        row.className = 'list-row notice-row';
+
+        const title = document.createElement('div');
+        title.className = 'notice-title';
+        title.textContent = notice.title || '공지';
+
+        const body = document.createElement('div');
+        body.className = 'notice-body';
+        body.textContent = notice.body || '';
+
+        const meta = document.createElement('div');
+        meta.className = 'todo-meta';
+        meta.textContent = notice.author ? `작성: ${notice.author}` : '랩 공통';
+
+        const remove = document.createElement('button');
+        remove.className = 'panel-button icon';
+        remove.type = 'button';
+        remove.textContent = '×';
+        remove.setAttribute('aria-label', `${notice.title || '공지'} 삭제`);
+        remove.addEventListener('click', () => {
+          workspaceCallbacks.noticeDelete?.({ id: notice.id });
+        });
+
+        row.append(title, body, meta, remove);
+        list.append(row);
+      });
+    };
+
+    actionCheckin.addEventListener('click', () => actionCallbacks.checkin?.());
+    actionCheckout.addEventListener('click', () => actionCallbacks.checkout?.());
+    document.querySelectorAll('[data-action-status]').forEach(button => {
+      button.addEventListener('click', () => actionCallbacks.status?.(button.dataset.actionStatus));
+    });
+
+    checkinForm.addEventListener('submit', event => {
+      event.preventDefault();
+      const name = checkinName.value.trim();
+      if (!name) {
+        checkinError.textContent = '닉네임을 입력해주세요.';
+        return;
+      }
+      checkinCallbacks.submit?.(name);
+    });
+
+    checkinCancel.addEventListener('click', () => closeCheckinModal({ callCancel: true }));
+
+    checkinModal.addEventListener('click', event => {
+      if (event.target === checkinModal) closeCheckinModal({ callCancel: true });
+    });
+
+    window.addEventListener('keydown', event => {
+      if (!checkinModal.hidden && event.key === 'Escape') {
+        closeCheckinModal({ callCancel: true });
+      }
+    });
+
+    document.getElementById('bubble-form')?.addEventListener('submit', event => {
+      event.preventDefault();
+      const input = document.getElementById('bubble-input');
+      const message = input.value.trim();
+      if (!message) return;
+      workspaceCallbacks.bubble?.(message);
+      input.value = '';
+    });
+
+    document.getElementById('bubble-clear')?.addEventListener('click', () => {
+      workspaceCallbacks.clearBubble?.();
+    });
+
+    document.getElementById('direct-form')?.addEventListener('submit', event => {
+      event.preventDefault();
+      const target = document.getElementById('direct-target');
+      const message = document.getElementById('direct-message');
+      const payload = { to: target.value, message: message.value.trim() };
+      if (!payload.to || !payload.message) return;
+      workspaceCallbacks.directMessage?.(payload);
+      message.value = '';
+    });
+
+    document.getElementById('todo-form')?.addEventListener('submit', event => {
+      event.preventDefault();
+      const input = document.getElementById('todo-input');
+      const owner = document.getElementById('todo-owner-input');
+      const due = document.getElementById('todo-due-input');
+      const text = input.value.trim();
+      if (!text) return;
+      workspaceCallbacks.todoAdd?.({
+        text,
+        owner: owner.value.trim(),
+        due: due.value,
+      });
+      input.value = '';
+      owner.value = '';
+      due.value = '';
+    });
+
+    window.addEventListener('lab:direct-message', event => {
+      messageLog.unshift(event.detail);
+      renderMessages();
+    });
+
+    window.addEventListener('lab:todos', event => {
+      renderTodos(event.detail?.todos);
+    });
+
+    document.getElementById('notice-form')?.addEventListener('submit', event => {
+      event.preventDefault();
+      const title = document.getElementById('notice-title-input');
+      const body = document.getElementById('notice-body-input');
+      const payload = {
+        title: title.value.trim(),
+        body: body.value.trim(),
+      };
+      if (!payload.title && !payload.body) return;
+      workspaceCallbacks.noticeAdd?.(payload);
+      title.value = '';
+      body.value = '';
+    });
+
+    window.addEventListener('lab:notices', event => {
+      renderNotices(event.detail?.notices);
+    });
+
+    document.querySelectorAll('.panel-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const target = tab.dataset.panel;
+        document.querySelectorAll('.panel-tab').forEach(item => {
+          item.setAttribute('aria-selected', String(item === tab));
+        });
+        document.querySelectorAll('.panel-view').forEach(view => {
+          view.classList.toggle('active', view.dataset.view === target);
+        });
+      });
+    });
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <script src="game.js"></script>

@@ -107,10 +107,10 @@ const C = {
 };
 
 const STATUS_META = {
-  working:    { label: '작업중', short: '작업', alpha: 1,    faceAway: false },
-  away:       { label: '자리비움', short: '비움', alpha: 0.42, faceAway: true },
-  meeting:    { label: '회의중', short: '회의', alpha: 0.65, faceAway: true },
-  experiment: { label: '실험중', short: '실험', alpha: 0.85, faceAway: false },
+  working:    { label: '작업중', short: '작업', alpha: 1,    faceAway: false, fill: 0x4f7d54, hover: 0x609765, css: '#78b47d' },
+  away:       { label: '자리비움', short: '비움', alpha: 0.42, faceAway: true,  fill: 0x6b6258, hover: 0x81766a, css: '#c7ad7a' },
+  meeting:    { label: '회의중', short: '회의', alpha: 0.65, faceAway: true,  fill: 0x415f86, hover: 0x4f739f, css: '#7da4d8' },
+  experiment: { label: '실험중', short: '실험', alpha: 0.85, faceAway: false, fill: 0x497b78, hover: 0x57928e, css: '#76c2ba' },
 };
 
 const STATUS_FLOW = ['working', 'away', 'meeting', 'experiment'];
@@ -128,6 +128,15 @@ const STATUS_FLOW = ['working', 'away', 'meeting', 'experiment'];
  */
 const $t = (sc, x, y, s, sz, col) =>
   sc.add.text(x, y, s, { fontFamily: '"Press Start 2P"', fontSize: sz, color: col, resolution: 2 });
+
+const $ui = (sc, x, y, s, sz, col, weight = '700') =>
+  sc.add.text(x, y, s, {
+    fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    fontSize: sz,
+    color: col,
+    fontStyle: weight,
+    resolution: 2,
+  });
 
 /**
  * 색상 hex 문자열('#RRGGBB')을 Phaser Graphics가 사용하는 숫자로 변환.
@@ -260,7 +269,7 @@ class LabScene extends Phaser.Scene {
     this.myName = null;   // null = 관찰자 모드 (출근 전)
     this.myStatus = 'working';
     this.users  = [];
-    this.chars  = {};     // 이름 → { container, g, timerTxt, msgG, msgTxt, tween, ... }
+    this.chars  = {};     // 이름 → { container, g, timerTxt, msgG, msgTxt, ... }
     this._modal = null;   // 출근 모달 오브젝트. null이면 닫힌 상태.
     this._pendingCheckinOk = null;
     this._keys = null;    // 키보드 입력 오브젝트
@@ -289,15 +298,24 @@ class LabScene extends Phaser.Scene {
       c.container.y = y;
       c.container.setDepth(Math.round(y) + 14);
     };
+    const onDirectMessage = m => window.dispatchEvent(new CustomEvent('lab:direct-message', { detail: m }));
+    const onTodos = todos => window.dispatchEvent(new CustomEvent('lab:todos', { detail: { todos } }));
+    const onNotices = notices => window.dispatchEvent(new CustomEvent('lab:notices', { detail: { notices } }));
     this.socket.on('state_sync', onState);
     this.socket.on('lab_error',  onErr);
     this.socket.on('player_move', onMove);
+    this.socket.on('direct_message', onDirectMessage);
+    this.socket.on('todos_sync', onTodos);
+    this.socket.on('notices_sync', onNotices);
 
     // 씬 종료 시 이벤트 리스너 정리 (메모리 누수 방지)
     this.events.once('shutdown', () => {
       this.socket.off('state_sync', onState);
       this.socket.off('lab_error',  onErr);
       this.socket.off('player_move', onMove);
+      this.socket.off('direct_message', onDirectMessage);
+      this.socket.off('todos_sync', onTodos);
+      this.socket.off('notices_sync', onNotices);
       if (this._pendingCheckinOk) this.socket.off('check_in_ok', this._pendingCheckinOk);
     });
 
@@ -343,24 +361,15 @@ class LabScene extends Phaser.Scene {
 
     const moving = dx !== 0 || dy !== 0;
 
-    if (moving && !this._wasMoving) {
-      // 이동 시작: 떠다니는 idle tween 정지
-      c.tween?.pause();
-    } else if (!moving && this._wasMoving) {
-      // 이동 정지: idle 상태로 복귀
-      const cont = c.container;
-      c.tween?.destroy();
-      c.tween = this.tweens.add({
-        targets: cont, y: cont.y - 3, yoyo: true, repeat: -1,
-        duration: 1400 + Math.random() * 700, ease: 'Sine.easeInOut',
-      });
-      if (this.myStatus === 'working') {
+    const stopped = !moving && this._wasMoving;
+    this._wasMoving = moving;
+    if (!moving) {
+      if (stopped && this.myStatus === 'working') {
         const reg = CHARACTERS[this.myName];
         if (reg) this._setSpriteExpr(c, reg.key, 'normal');
       }
+      return;
     }
-    this._wasMoving = moving;
-    if (!moving) return;
 
     // 위치 업데이트 (충돌 처리 포함)
     const cont = c.container;
@@ -744,17 +753,7 @@ class LabScene extends Phaser.Scene {
     }).setOrigin(0.5, 1).setVisible(false);
     container.add([msgG, msgTxt]);
 
-    // ── 떠다니는 idle 애니메이션 (내 캐릭터만) ──
-    // 다른 사람 캐릭터는 player_move로 위치가 갱신되므로 tween을 걸면 위치가 충돌함
-    const tween = user.name === this.myName
-      ? this.tweens.add({
-          targets: container, y: initY - 3,
-          yoyo: true, repeat: -1,
-          duration: 1400 + Math.random() * 700, ease: 'Sine.easeInOut',
-        })
-      : null;
-
-    this.chars[user.name] = { container, g, tagG, nameTxt, timerTxt, msgG, msgTxt, tween, sprite, charKey: reg ? reg.key : null };
+    this.chars[user.name] = { container, g, tagG, nameTxt, timerTxt, msgG, msgTxt, sprite, charKey: reg ? reg.key : null };
 
     // 초기 상태 적용
     this._applyStatus(user.name, user.status);
@@ -858,12 +857,11 @@ class LabScene extends Phaser.Scene {
 
   /**
    * 캐릭터를 화면에서 제거한다 (퇴근 또는 연결 끊김).
-   * Tween 먼저 중지 후 Container 파괴 (메모리 정리).
+   * Container 파괴 시 자식 오브젝트도 함께 정리된다.
    */
   _removeChar(name) {
     const c = this.chars[name];
     if (!c) return;
-    c.tween?.remove();      // 애니메이션 중지
     c.container?.destroy(); // 컨테이너 + 모든 자식 오브젝트 파괴
     delete this.chars[name];
   }
@@ -913,6 +911,7 @@ class LabScene extends Phaser.Scene {
   _sync(users) {
     this.users = users;
     if (this.countTxt) this.countTxt.setText(`${users.length}명`);
+    window.dispatchEvent(new CustomEvent('lab:state', { detail: { users } }));
 
     const live = new Set(users.map(u => u.name));
     // 서버에 없는 캐릭터 제거 (퇴근/연결 끊김)
@@ -952,7 +951,7 @@ class LabScene extends Phaser.Scene {
 
   // ─── UI 바 ────────────────────────────────────────────────────────────────────
 
-  /** 하단 UI 바를 만든다. 접속자 수 표시 + 출근/자리비움/퇴근 버튼. */
+  /** 하단 UI 바를 만든다. 접속자 수 표시 + 출근/상태/퇴근 버튼. */
   _buildUI() {
     const by = H - UI_H; // 바 상단 y 좌표
 
@@ -965,51 +964,100 @@ class LabScene extends Phaser.Scene {
 
     // ── 접속자 표시 (왼쪽) ──
     // 맥박처럼 깜박이는 초록 점
-    const dot = this.add.circle(20, by + 22, 5, 0x5c9060).setDepth(Z_UI + 1);
+    const dot = this.add.circle(24, by + 24, 6, 0x5c9060).setDepth(Z_UI + 1);
     this.tweens.add({ targets: dot, alpha: { from: 0.4, to: 1 }, duration: 900, yoyo: true, repeat: -1 });
-    this.countTxt = $t(this, 33, by + 22, '0명', 9, C.tGrn).setOrigin(0, 0.5).setDepth(Z_UI + 1);
-    $t(this, 33, by + 38, '접속 중', 6, C.tMut).setOrigin(0, 0.5).setDepth(Z_UI + 1);
+    this.countTxt = $ui(this, 42, by + 20, '0명', 18, C.tGrn).setOrigin(0, 0.5).setDepth(Z_UI + 1);
+    $ui(this, 42, by + 43, '출근 중', 12, C.tMut, '600').setOrigin(0, 0.5).setDepth(Z_UI + 1);
 
     // 버전 표시 (오른쪽 하단)
-    $t(this, W - 10, by + 8, 'v1.0', 6, '#7a6858').setOrigin(1, 0).setDepth(Z_UI + 1);
+    $ui(this, W - 10, by + 7, 'v1.0', 10, '#7a6858', '600').setOrigin(1, 0).setDepth(Z_UI + 1);
 
     // ── 출근하기 버튼 (관찰자 모드에서 표시) ──
-    const [ciB, ciL] = this._makeBtn(W / 2, by + 32, 210, 42, C.btnIn, C.btnInH, '출근하기', 11);
+    const [ciB, ciL, ciBd] = this._makeBtn(W / 2, by + 32, 260, 46, C.btnIn, C.btnInH, '출근하기', 18);
     ciB.on('pointerdown', () => this._openModal());
-    this._ciG = [ciB, ciL]; // 관찰자 모드 버튼 그룹
+    this._ciG = [ciB, ciL, ciBd]; // 관찰자 모드 버튼 그룹
 
-    // ── 상태 변경 버튼 (근무 중 모드에서 표시) ──
-    const [stB, stL] = this._makeBtn(W / 2 - 108, by + 32, 182, 42, C.btnAway, C.btnAwayA, '상태:작업', 9);
-    stB.on('pointerdown', () => {
-      this.myStatus = this._nextStatus(this.myStatus);
-      this.socket.emit('set_status', { status: this.myStatus });
-      this._refreshStatusBtn();
-    });
-    this.stB = stB; this.stL = stL;
+    // ── 상태 선택 버튼 (근무 중 모드에서 표시) ──
+    const statusLabel = $ui(this, 198, by + 32, '상태', 14, C.tMut, '700')
+      .setOrigin(0.5)
+      .setDepth(Z_UI + 1);
+    this._statusButtons = STATUS_FLOW.map((status, idx) =>
+      this._makeStatusBtn(status, 286 + idx * 98, by + 32, 88, 40)
+    );
+    this._statusG = [
+      statusLabel,
+      ...this._statusButtons.flatMap(item => [item.btn, item.lbl, item.bd]),
+    ];
 
     // ── 퇴근하기 버튼 ──
-    const [outB, outL] = this._makeBtn(W - 112, by + 32, 186, 42, C.btnOut, C.btnOutH, '퇴근하기', 10);
+    const [outB, outL, outBd] = this._makeBtn(W - 96, by + 32, 150, 44, C.btnOut, C.btnOutH, '퇴근', 17);
     outB.on('pointerdown', () => this._checkout());
-    this._wkG = [stB, stL, outB, outL]; // 근무 중 버튼 그룹
+    this._outG = [outB, outL, outBd];
+    this._wkG = [...this._statusG, ...this._outG]; // 근무 중 버튼 그룹
+
+    window.LabUI?.bindActions?.({
+      onCheckin: () => this._openModal(),
+      onStatus: status => this._setMyStatus(status),
+      onCheckout: () => this._checkout(),
+    });
+    window.LabUI?.bindWorkspace?.({
+      onBubble: message => this.socket.emit('set_bubble', { message }),
+      onClearBubble: () => this.socket.emit('clear_bubble'),
+      onDirectMessage: payload => this.socket.emit('send_direct_message', payload),
+      onTodoAdd: payload => this.socket.emit('todo_add', payload),
+      onTodoToggle: payload => this.socket.emit('todo_toggle', payload),
+      onTodoDelete: payload => this.socket.emit('todo_delete', payload),
+      onNoticeAdd: payload => this.socket.emit('notice_add', payload),
+      onNoticeDelete: payload => this.socket.emit('notice_delete', payload),
+    });
 
     this._setMode('observer'); // 초기: 관찰자 모드
   }
 
   /**
    * 픽셀 아트 스타일 버튼을 만든다.
-   * @returns {[Rectangle, Text]}  버튼 배경 + 레이블
+   * @returns {[Rectangle, Text, Graphics]}  버튼 배경 + 레이블 + 테두리
    */
   _makeBtn(x, y, w, h, fill, hover, label, fontSize) {
     const btn = this.add.rectangle(x, y, w, h, fill).setDepth(Z_UI + 1).setInteractive({ useHandCursor: true });
+    btn.setData('fill', fill);
+    btn.setData('hover', hover);
+    btn.setData('isUiButton', true);
     // 픽셀 테두리 (흰색 반투명 선)
     const bd  = this.add.graphics().setDepth(Z_UI + 1);
-    bd.lineStyle(1, 0xffffff, 0.1); bd.strokeRect(x - w / 2 + 1, y - h / 2 + 1, w - 2, h - 2);
-    const lbl = $t(this, x, y, label, fontSize, C.tPri).setOrigin(0.5).setDepth(Z_UI + 2);
-    btn.on('pointerover',  () => btn.setFillStyle(hover));     // 호버: 밝아짐
-    btn.on('pointerout',   () => btn.setFillStyle(fill));      // 호버 해제
-    btn.on('pointerdown',  () => btn.setScale(0.96));          // 클릭: 약간 축소
-    btn.on('pointerup',    () => btn.setScale(1));             // 클릭 해제: 원래 크기
-    return [btn, lbl];
+    bd.lineStyle(1, 0xffffff, 0.16); bd.strokeRect(x - w / 2 + 1, y - h / 2 + 1, w - 2, h - 2);
+    bd.lineStyle(1, 0x000000, 0.28); bd.strokeRect(x - w / 2, y - h / 2, w, h);
+    const lbl = $ui(this, x, y, label, fontSize, C.tPri).setOrigin(0.5).setDepth(Z_UI + 2);
+    btn.on('pointerover', () => btn.setFillStyle(btn.getData('hover'))); // 호버: 밝아짐
+    btn.on('pointerout', () => { btn.setFillStyle(btn.getData('fill')); lbl.setAlpha(1); });
+    btn.on('pointerdown', () => lbl.setAlpha(0.78));            // 클릭 피드백
+    btn.on('pointerup', () => lbl.setAlpha(1));
+    return [btn, lbl, bd];
+  }
+
+  _makeStatusBtn(status, x, y, w, h) {
+    const meta = STATUS_META[status];
+    const btn = this.add.rectangle(x, y, w, h, meta.fill).setDepth(Z_UI + 1).setInteractive({ useHandCursor: true });
+    btn.setData('isUiButton', true);
+    const bd = this.add.graphics().setDepth(Z_UI + 1);
+    bd.lineStyle(1, 0xffffff, 0.16); bd.strokeRect(x - w / 2 + 1, y - h / 2 + 1, w - 2, h - 2);
+    bd.lineStyle(1, 0x000000, 0.32); bd.strokeRect(x - w / 2, y - h / 2, w, h);
+    const lbl = $ui(this, x, y, meta.short, 15, C.tPri).setOrigin(0.5).setDepth(Z_UI + 2);
+    btn.on('pointerover', () => btn.setFillStyle(meta.hover));
+    btn.on('pointerout', () => this._refreshStatusBtn());
+    btn.on('pointerdown', () => {
+      this._setMyStatus(status);
+      lbl.setAlpha(0.78);
+    });
+    btn.on('pointerup', () => lbl.setAlpha(1));
+    return { status, btn, lbl, bd };
+  }
+
+  _setMyStatus(status) {
+    if (!STATUS_META[status]) return;
+    this.myStatus = status;
+    this.socket.emit('set_status', { status });
+    this._refreshStatusBtn();
   }
 
   _nextStatus(status) {
@@ -1019,9 +1067,14 @@ class LabScene extends Phaser.Scene {
 
   /** 상태 버튼 텍스트/색상을 현재 상태에 맞게 갱신한다. */
   _refreshStatusBtn() {
-    const working = this.myStatus === 'working';
-    this.stB?.setFillStyle(working ? C.btnAway : C.btnAwayA);
-    this.stL?.setText(`상태:${STATUS_META[this.myStatus]?.short ?? this.myStatus}`);
+    this._statusButtons?.forEach(item => {
+      const meta = STATUS_META[item.status];
+      const active = item.status === this.myStatus;
+      item.btn.setFillStyle(active ? meta.hover : meta.fill);
+      item.lbl.setColor(active ? '#ffffff' : '#ded3c5');
+      item.lbl.setAlpha(active ? 1 : 0.72);
+    });
+    window.LabUI?.setActiveStatus?.(this.myStatus);
   }
 
   /**
@@ -1030,8 +1083,22 @@ class LabScene extends Phaser.Scene {
    */
   _setMode(m) {
     const w = m === 'worker';
-    this._ciG?.forEach(o => o.setVisible(!w)); // 출근하기: 관찰자일 때만 보임
-    this._wkG?.forEach(o => o.setVisible(w));  // 자리비움/퇴근: 근무 중일 때만 보임
+    const useHtmlControls = Boolean(window.LabUI?.setPresenceMode);
+    this._setControlGroup(this._ciG, !w && !useHtmlControls); // HTML 조작부가 없을 때만 캔버스 출근 버튼 사용
+    this._setControlGroup(this._wkG, w && !useHtmlControls);  // HTML 조작부가 없을 때만 캔버스 상태/퇴근 버튼 사용
+    window.LabUI?.setPresenceMode?.(m);
+  }
+
+  _setControlGroup(group, visible) {
+    group?.forEach(o => {
+      o.setVisible(visible);
+      if (!o.getData?.('isUiButton')) return;
+      if (visible) {
+        o.setInteractive({ useHandCursor: true });
+      } else {
+        o.disableInteractive();
+      }
+    });
   }
 
   // ─── 출근 모달 ──────────────────────────────────────────────────────────────
@@ -1044,6 +1111,15 @@ class LabScene extends Phaser.Scene {
   _openModal() {
     if (this._modal) return; // 이미 열려있으면 무시
 
+    if (window.LabUI?.openCheckinModal) {
+      this._modal = { external: true };
+      window.LabUI.openCheckinModal({
+        onSubmit: name => this._submitCheckin(name),
+        onCancel: () => { this._modal = null; },
+      });
+      return;
+    }
+
     const objs = [];
     // 헬퍼: 오브젝트를 추적 배열에 추가하고 반환
     const keep = o => { objs.push(o); return o; };
@@ -1053,7 +1129,7 @@ class LabScene extends Phaser.Scene {
     this.tweens.add({ targets: ov, alpha: 0.76, duration: 200 });
 
     // ── 패널 (스케일+페이드 인 애니메이션) ──
-    const pw = 440, ph = 280, px = W / 2, py = H / 2;
+    const pw = 420, ph = 268, px = W / 2, py = H / 2;
     const panel = keep(this.add.rectangle(px, py, pw, ph, 0x2a2218).setAlpha(0).setScale(0.88).setDepth(Z_MODAL + 1));
     this.tweens.add({ targets: panel, alpha: 1, scaleX: 1, scaleY: 1, duration: 240, ease: 'Back.easeOut' });
 
@@ -1064,32 +1140,32 @@ class LabScene extends Phaser.Scene {
     this.tweens.add({ targets: pbdr, alpha: 1, duration: 240 });
 
     // ── 코너 별 장식 ──
-    [[px - pw / 2 + 12, py - ph / 2 + 12, '✦', '#c09860'],
-     [px + pw / 2 - 12, py - ph / 2 + 12, '✦', '#c09860'],
-     [px - pw / 2 + 12, py + ph / 2 - 12, '✧', '#9a7840'],
-     [px + pw / 2 - 12, py + ph / 2 - 12, '✧', '#9a7840']].forEach(([cx, cy, s, col]) => {
+    [[px - pw / 2 + 12, py - ph / 2 + 12, '·', '#c09860'],
+     [px + pw / 2 - 12, py - ph / 2 + 12, '·', '#c09860'],
+     [px - pw / 2 + 12, py + ph / 2 - 12, '·', '#9a7840'],
+     [px + pw / 2 - 12, py + ph / 2 - 12, '·', '#9a7840']].forEach(([cx, cy, s, col]) => {
       const st = keep($t(this, cx, cy, s, 10, col).setOrigin(0.5).setDepth(Z_MODAL + 2).setAlpha(0));
       this.tweens.add({ targets: st, alpha: 1, duration: 300, delay: 80 });
     });
 
     // ── 타이틀 ──
-    const title = keep($t(this, px, py - 102, '오늘도 출근! ✨', 13, '#f0e8d8').setOrigin(0.5).setDepth(Z_MODAL + 2).setAlpha(0));
+    const title = keep($t(this, px, py - 90, '오늘도 출근!', 13, '#f0e8d8').setOrigin(0.5).setDepth(Z_MODAL + 2).setAlpha(0));
     this.tweens.add({ targets: title, alpha: 1, duration: 240, delay: 60 });
 
-    const sub = keep($t(this, px, py - 76, '닉네임을 입력하세요', 7, C.tMut).setOrigin(0.5).setDepth(Z_MODAL + 2).setAlpha(0));
+    const sub = keep($t(this, px, py - 62, '닉네임을 입력하세요', 7, C.tMut).setOrigin(0.5).setDepth(Z_MODAL + 2).setAlpha(0));
     this.tweens.add({ targets: sub, alpha: 1, duration: 240, delay: 100 });
 
     // ── 닉네임 입력 필드 (DOM) ──
     // font-size:16px → iOS에서 자동 줌 방지
-    // transform:scale(0.78) → 시각적 크기를 12px 수준으로 보정
-    const domEl = keep(this.add.dom(px, py - 24).createFromHTML(`
+    const domEl = keep(this.add.dom(px, py - 18).createFromHTML(`
       <input id="ci" type="text" autocomplete="off" maxlength="8" placeholder="최대 8자"
-        style="font-family:'Press Start 2P',monospace;font-size:16px;
-               background:transparent;color:#e8d8c0;
-               border:none;border-bottom:2px solid #9a7a50;
-               padding:8px 12px;width:280px;text-align:center;
-               outline:none;letter-spacing:3px;display:block;
-               transform:scale(0.78);transform-origin:center;">
+        style="box-sizing:border-box;width:276px;height:44px;
+               font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+               font-size:16px;font-weight:700;
+               background:#17130f;color:#f2ede6;
+               border:2px solid #9a7a50;border-radius:4px;
+               padding:0 14px;text-align:center;outline:none;display:block;
+               box-shadow:inset 0 0 0 1px rgba(255,255,255,0.08);">
     `).setDepth(Z_MODAL + 2));
     // Enter: 출근 시도 / Escape: 모달 닫기
     domEl.addListener('keydown').on('keydown', e => {
@@ -1099,10 +1175,10 @@ class LabScene extends Phaser.Scene {
     });
 
     // ── 오류 메시지 텍스트 ──
-    const errTxt = keep($t(this, px, py + 24, '', 7, '#ff7777').setOrigin(0.5).setDepth(Z_MODAL + 2));
+    const errTxt = keep($t(this, px, py + 36, '', 7, '#ff7777').setOrigin(0.5).setDepth(Z_MODAL + 2));
 
     // ── 버튼 ──
-    const btnY = py + 88;
+    const btnY = py + 92;
     const [okB, okL, okBd] = this._modalBtn(px - 68, btnY, 124, 40, 0x7a5c3a, 0x9a7a52, '출근!', 9);
     const [cnB, cnL, cnBd] = this._modalBtn(px + 68, btnY, 124, 40, 0x2a2218, 0x3a3028, '취소', 9);
     // 버튼도 추적 배열에 추가 + 페이드 인
@@ -1140,6 +1216,11 @@ class LabScene extends Phaser.Scene {
    */
   _closeModal() {
     if (!this._modal) return;
+    if (this._modal.external) {
+      window.LabUI?.closeCheckinModal?.();
+      this._modal = null;
+      return;
+    }
     this._modal._objs.forEach(o => { this.tweens.killTweensOf(o); o?.destroy?.(); });
     this._modal = null;
   }
@@ -1148,10 +1229,11 @@ class LabScene extends Phaser.Scene {
    * 닉네임을 서버에 전송하고 출근을 시도한다.
    * 서버에서 check_in_ok를 받으면 근무 모드로 전환.
    */
-  _submitCheckin() {
+  _submitCheckin(nameOverride) {
     const el   = document.getElementById('ci');
-    const name = (el?.value ?? '').trim();
+    const name = (nameOverride ?? el?.value ?? '').trim();
     if (!name) {
+      if (this._modal?.external) window.LabUI?.setCheckinError?.('닉네임을 입력해주세요.');
       if (this._modal?.errTxt) this._modal.errTxt.setText('닉네임을 입력해주세요');
       return;
     }
@@ -1163,6 +1245,7 @@ class LabScene extends Phaser.Scene {
       this._closeModal();
       this._setMode('worker');
       this._refreshStatusBtn();
+      window.LabUI?.setCurrentUser?.(acceptedName);
       this._toast(`${acceptedName}님, 오늘도 화이팅! ✨`);
     };
     this._pendingCheckinOk = onOk;
@@ -1174,6 +1257,7 @@ class LabScene extends Phaser.Scene {
   _checkout() {
     this.socket.emit('check_out');
     this.myName = null; this.myStatus = 'working';
+    window.LabUI?.setCurrentUser?.(null);
     this._refreshStatusBtn();
     this._setMode('observer');
   }
@@ -1185,6 +1269,7 @@ class LabScene extends Phaser.Scene {
       this._pendingCheckinOk = null;
     }
     if (this._modal?.errTxt) this._modal.errTxt.setText(msg);
+    if (this._modal?.external) window.LabUI?.setCheckinError?.(msg);
   }
 
   /**

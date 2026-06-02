@@ -6,17 +6,23 @@
 
 - 실시간 연구실 현황: 접속한 구성원을 픽셀 캐릭터와 책상 위치로 표시
 - 출근/퇴근: 닉네임으로 입장하고 퇴근 시 자리 해제
-- 상태 표시: `작업중`, `자리비움`, `회의중`, `실험중`
+- 상태 표시: `작업중`, `자리비움`, `회의중`, `실험중`을 명시 버튼으로 선택
 - 프로필 유지: 닉네임별 색상과 선호 자리를 `pixellab/data/profiles.json`에 저장
+- 반응형 워크스페이스: PC에서는 우측 고정 패널, 모바일에서는 하단 탭 패널 사용
+- 현황 패널 연동: 출근자 수, 상태별 인원, 출근자 목록을 실시간 상태와 함께 갱신
+- 가독성 개선: 한국어 조작 UI는 시스템 폰트를 사용하고 상태별 색상 규칙을 적용
+- 공지 분리: 공지 영역을 메시지/투두와 분리된 탭으로 제공
+- 메시지/말풍선: 개인 메시지를 보낼 수 있고, 내 상태나 짧은 말을 캐릭터 말풍선으로 표시
+- 공유 투두: 예시 투두를 기본 제공하고, 실제 투두를 담당자/마감일과 함께 추가/완료/삭제
 - 오류 처리: 공백/중복 닉네임 거절, 6명 만석 제한
 
 `pixellab/data/`는 개인/운영 데이터가 들어가는 런타임 폴더이므로 Git에 올리지 않습니다.
 
 ## 현재 구조
 
-- `pixellab/server.js`: Express + Socket.io 서버, 사용자/책상/프로필 상태 관리
-- `pixellab/public/index.html`: 브라우저 진입점
-- `pixellab/public/game.js`: Phaser 기반 연구실 UI와 실시간 상태 동기화
+- `pixellab/server.js`: Express + Socket.io 서버, 사용자/책상/프로필/메시지/투두 상태 관리
+- `pixellab/public/index.html`: 브라우저 진입점, 반응형 app shell, 실시간 현황/소형 기능 패널
+- `pixellab/public/game.js`: Phaser 기반 연구실 UI, 실시간 상태 동기화, 패널 상태 이벤트 전달
 - `pixellab/package.json`: 실행 스크립트와 의존성
 - `pixellab/Dockerfile`: Node 20 Alpine 기반 컨테이너 빌드
 - `PROJECT_STATUS.md`: 현재 진행 상태, 검증 내역, 남은 작업을 기록하는 기준 문서
@@ -55,6 +61,13 @@ node --check server.js
 node --check public\game.js
 ```
 
+Socket.io smoke test:
+
+```powershell
+cd D:\CodexCodeProj\LabWorkspace\pixellab
+node scripts\smoke.js
+```
+
 HTTP smoke check:
 
 ```powershell
@@ -89,6 +102,7 @@ docker run --rm -p 8080:8080 pixellab
 - `node --check server.js`
 - `node --check public\game.js`
 - 로컬 실행 후 기본 접속/출근/상태 변경/퇴근 확인
+- `node scripts\smoke.js`
 
 ## 다음 개발 후보
 

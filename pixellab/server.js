@@ -18,8 +18,10 @@ const httpServer = http.createServer(app);
 const io = new Server(httpServer);
 
 const PORT = process.env.PORT || 8080;
-const DATA_DIR = path.join(__dirname, 'data');
+const DATA_DIR = process.env.PIXELLAB_DATA_DIR || path.join(__dirname, 'data');
 const PROFILES_FILE = path.join(DATA_DIR, 'profiles.json');
+const TODOS_FILE = path.join(DATA_DIR, 'todos.json');
+const NOTICES_FILE = path.join(DATA_DIR, 'notices.json');
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -36,10 +38,21 @@ const COLORS = [
 
 const MAX_DESKS = 6;
 const ACTIVE_STATUSES = new Set(['working', 'away', 'meeting', 'experiment']);
+const DEFAULT_TODOS = [
+  { text: '실험실 공지 확인하기', owner: '랩 공통' },
+  { text: '오늘 진행할 분석 작업 정리하기', owner: '랩 공통' },
+  { text: '회의 전 공유 자료 업데이트하기', owner: '랩 공통' },
+];
+const DEFAULT_NOTICES = [
+  { title: '오늘 공지', body: '실험실 공용 PC 사용 후 로그아웃을 확인해 주세요.' },
+  { title: '세미나 준비', body: '세미나 자료는 시작 30분 전까지 공유 폴더에 올려주세요.' },
+];
 
 const users = {};
 const desks = new Array(MAX_DESKS).fill(null);
 let profiles = loadProfiles();
+let todos = loadTodos();
+let notices = loadNotices();
 
 function loadProfiles() {
   try {
@@ -61,8 +74,65 @@ function saveProfiles() {
   }
 }
 
+function loadTodos() {
+  try {
+    const raw = fs.readFileSync(TODOS_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    if (err.code !== 'ENOENT') console.warn(`Could not load todos: ${err.message}`);
+    return DEFAULT_TODOS.map((todo, idx) => ({
+      id: `sample-${idx + 1}`,
+      text: todo.text,
+      owner: todo.owner,
+      done: false,
+      createdAt: new Date().toISOString(),
+      sample: true,
+    }));
+  }
+}
+
+function loadNotices() {
+  try {
+    const raw = fs.readFileSync(NOTICES_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    if (err.code !== 'ENOENT') console.warn(`Could not load notices: ${err.message}`);
+    return DEFAULT_NOTICES.map((notice, idx) => ({
+      id: `sample-notice-${idx + 1}`,
+      title: notice.title,
+      body: notice.body,
+      createdAt: new Date().toISOString(),
+      sample: true,
+    }));
+  }
+}
+
+function saveTodos() {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(TODOS_FILE, `${JSON.stringify(todos, null, 2)}\n`, 'utf8');
+  } catch (err) {
+    console.warn(`Could not save todos: ${err.message}`);
+  }
+}
+
+function saveNotices() {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(NOTICES_FILE, `${JSON.stringify(notices, null, 2)}\n`, 'utf8');
+  } catch (err) {
+    console.warn(`Could not save notices: ${err.message}`);
+  }
+}
+
 function cleanName(name) {
   return String(name ?? '').trim().slice(0, 8);
+}
+
+function cleanText(text, limit = 80) {
+  return String(text ?? '').trim().slice(0, limit);
 }
 
 function activeProfileNames() {
@@ -178,8 +248,22 @@ function setUserStatus(socketId, status) {
   return true;
 }
 
+function findUserByName(name) {
+  return Object.entries(users).find(([, user]) => user.name === name) ?? null;
+}
+
+function publishTodos() {
+  io.emit('todos_sync', todos);
+}
+
+function publishNotices() {
+  io.emit('notices_sync', notices);
+}
+
 io.on('connection', (socket) => {
   socket.emit('state_sync', snapshot());
+  socket.emit('todos_sync', todos);
+  socket.emit('notices_sync', notices);
 
   socket.on('check_in', ({ name }) => {
     if (users[socket.id]) return;
@@ -246,13 +330,31 @@ io.on('connection', (socket) => {
     if (setUserStatus(socket.id, 'working')) io.emit('state_sync', snapshot());
   });
 
+  socket.on('set_bubble', ({ message }) => {
+    const user = users[socket.id];
+    if (!user || !message) return;
+
+    if (user.msgTimer) clearTimeout(user.msgTimer);
+
+    user.message = cleanText(message, 32);
+    io.emit('state_sync', snapshot());
+  });
+
+  socket.on('clear_bubble', () => {
+    const user = users[socket.id];
+    if (!user) return;
+    if (user.msgTimer) clearTimeout(user.msgTimer);
+    user.message = null;
+    io.emit('state_sync', snapshot());
+  });
+
   socket.on('send_message', ({ message }) => {
     const user = users[socket.id];
     if (!user || !message) return;
 
     if (user.msgTimer) clearTimeout(user.msgTimer);
 
-    user.message = String(message).trim().slice(0, 20);
+    user.message = cleanText(message, 32);
     io.emit('state_sync', snapshot());
 
     user.msgTimer = setTimeout(() => {
@@ -269,6 +371,88 @@ io.on('connection', (socket) => {
     user.x = x;
     user.y = y;
     socket.broadcast.emit('player_move', { name: user.name, x, y });
+  });
+
+  socket.on('send_direct_message', ({ to, message }) => {
+    const fromUser = users[socket.id];
+    const text = cleanText(message, 160);
+    const targetName = cleanName(to);
+    if (!fromUser || !targetName || !text) return;
+
+    const target = findUserByName(targetName);
+    if (!target) {
+      socket.emit('lab_error', '메시지를 보낼 상대가 출근 중이 아니에요');
+      return;
+    }
+
+    const [targetSocketId, targetUser] = target;
+    const payload = {
+      from: fromUser.name,
+      to: targetUser.name,
+      message: text,
+      at: new Date().toISOString(),
+    };
+    socket.emit('direct_message', { ...payload, direction: 'sent' });
+    io.to(targetSocketId).emit('direct_message', { ...payload, direction: 'received' });
+  });
+
+  socket.on('todo_add', ({ text, owner, due }) => {
+    const user = users[socket.id];
+    const clean = cleanText(text, 100);
+    if (!clean) return;
+
+    todos.unshift({
+      id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+      text: clean,
+      owner: cleanText(owner, 24) || user?.name || '랩 공통',
+      due: cleanText(due, 20),
+      done: false,
+      createdAt: new Date().toISOString(),
+    });
+    saveTodos();
+    publishTodos();
+  });
+
+  socket.on('notice_add', ({ title, body }) => {
+    const user = users[socket.id];
+    const cleanTitle = cleanText(title, 60);
+    const cleanBody = cleanText(body, 240);
+    if (!cleanTitle && !cleanBody) return;
+
+    notices.unshift({
+      id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+      title: cleanTitle || '공지',
+      body: cleanBody,
+      author: user?.name ?? '랩 공통',
+      createdAt: new Date().toISOString(),
+    });
+    saveNotices();
+    publishNotices();
+  });
+
+  socket.on('notice_delete', ({ id }) => {
+    const before = notices.length;
+    notices = notices.filter(item => item.id !== id);
+    if (notices.length === before) return;
+    saveNotices();
+    publishNotices();
+  });
+
+  socket.on('todo_toggle', ({ id, done }) => {
+    const todo = todos.find(item => item.id === id);
+    if (!todo) return;
+    todo.done = Boolean(done);
+    todo.updatedAt = new Date().toISOString();
+    saveTodos();
+    publishTodos();
+  });
+
+  socket.on('todo_delete', ({ id }) => {
+    const before = todos.length;
+    todos = todos.filter(item => item.id !== id);
+    if (todos.length === before) return;
+    saveTodos();
+    publishTodos();
   });
 
   socket.on('disconnect', () => {
