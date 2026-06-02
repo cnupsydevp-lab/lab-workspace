@@ -389,7 +389,7 @@ class LabScene extends Phaser.Scene {
       // 방향별 walk 애니메이션 (normal.png 4x4 기준)
       if (reg.anim.normal) {
         const normTex = charTexKey(reg.key, 'normal');
-        [['walk_down',0,3],['walk_left',4,7],['walk_right',8,11],['walk_up',12,15]].forEach(([dir, s, e]) => {
+        [['walk_down',0,3],['walk_left',4,7],['walk_up',8,11],['walk_right',12,15]].forEach(([dir, s, e]) => {
           const key = `${reg.key}_${dir}`;
           if (!this.anims.exists(key)) {
             this.anims.create({ key, frames: this.anims.generateFrameNumbers(normTex, { start: s, end: e }), frameRate: 8, repeat: -1 });
