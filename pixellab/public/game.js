@@ -272,6 +272,10 @@ class LabScene extends Phaser.Scene {
     this._setupKeys();   // 키보드 입력 설정
     this._drawRoom();  // 연구실 배경 (벽, 바닥, 창문, 책장, 러그 등)
     this._drawDesks(); // 6개 책상 + 모니터/키보드/커피잔
+    this._deskRects = DESKS.map(d => ({
+      l: d.x - DW / 2 - 8, r: d.x + DW / 2 + 8,
+      t: d.y - 8,           b: d.y + DH + 30,
+    }));
     this._buildUI();   // 하단 UI 바 (출근/퇴근/자리비움 버튼, 접속자 수)
 
     // 서버 이벤트 수신 등록
@@ -292,6 +296,11 @@ class LabScene extends Phaser.Scene {
   }
 
   // ─── 키보드 이동 ─────────────────────────────────────────────────────────────
+
+  /** 발 좌표(x, y)가 책상 충돌 영역 안에 있는지 확인한다. */
+  _collidesDesk(x, y) {
+    return this._deskRects.some(r => x > r.l && x < r.r && y > r.t && y < r.b);
+  }
 
   /** 방향키 / WASD 입력 오브젝트를 생성한다. */
   _setupKeys() {
@@ -343,10 +352,17 @@ class LabScene extends Phaser.Scene {
     this._wasMoving = moving;
     if (!moving) return;
 
-    // 위치 업데이트
+    // 위치 업데이트 (충돌 처리 포함)
     const cont = c.container;
-    cont.x = Phaser.Math.Clamp(cont.x + dx, 30, W - 30);
-    cont.y = Phaser.Math.Clamp(cont.y + dy, WALL_H + 20, H - UI_H - 20);
+    const FOOT = 14;
+    let nx = Phaser.Math.Clamp(cont.x + dx, 30, W - 30);
+    let ny = Phaser.Math.Clamp(cont.y + dy, WALL_H + 20, H - UI_H - 20);
+    if (this._collidesDesk(nx, ny + FOOT)) {
+      if      (!this._collidesDesk(nx,     cont.y + FOOT)) ny = cont.y;
+      else if (!this._collidesDesk(cont.x, ny + FOOT))     nx = cont.x;
+      else    { nx = cont.x; ny = cont.y; }
+    }
+    cont.x = nx; cont.y = ny;
     // y 기반 depth: 앞에 있을수록(y 클수록) 높은 depth
     cont.setDepth(Math.round(cont.y) + 14);
 
