@@ -473,7 +473,8 @@ class LabScene extends Phaser.Scene {
 
   /** 모든 책상을 그린다. */
   _drawDesks() {
-    const g = this.add.graphics();
+    // depth 6 = 캐릭터(5)보다 앞 → 책상/모니터가 캐릭터 하반신·몸통을 자연스럽게 가림
+    const g = this.add.graphics().setDepth(6);
     DESKS.forEach(d => this._desk(g, d.x, d.y));
   }
 
