@@ -51,6 +51,9 @@ const DESKS = [
 /** 책상 가로/세로 크기 (픽셀). */
 const DW = 186, DH = 54;
 
+/** 캐릭터 이동 속도 (px/초). */
+const SPEED = 180;
+
 /**
  * 전체 컬러 팔레트.
  * 연구실/UI/캐릭터에서 공통으로 사용.
@@ -148,6 +151,8 @@ const CHARACTERS = {
     // anim: expression → { frameW, frameH, start, end, frameRate }
     // normal: front-facing walk cycle (4 frames), happy: 15-frame expression, cry: 8-frame
     anim: {
+      // normal.png = 4x4 spritesheet (row0=down, row1=left, row2=right, row3=up)
+      // start/end 0-3: idle (front row). 방향별 walk 애니는 _createAnims()에서 등록.
       normal: { frameW: 210, frameH: 285, start: 0, end: 3,  frameRate: 6 },
       happy:  { frameW: 215, frameH: 330, start: 0, end: 14, frameRate: 8 },
       cry:    { frameW: 315, frameH: 440, start: 0, end: 7,  frameRate: 5 },
@@ -254,10 +259,13 @@ class LabScene extends Phaser.Scene {
     this.chars  = {};     // 이름 → { container, g, timerTxt, msgG, msgTxt, tween, ... }
     this._modal = null;   // 출근 모달 오브젝트. null이면 닫힌 상태.
     this._pendingCheckinOk = null;
+    this._keys = null;    // 키보드 입력 오브젝트
+    this._wasMoving = false;
   }
 
   create() {
     this._createAnims(); // 애니메이션 등록 (spritesheet 캐릭터 전용)
+    this._setupKeys();   // 키보드 입력 설정
     this._drawRoom();  // 연구실 배경 (벽, 바닥, 창문, 책장, 러그 등)
     this._drawDesks(); // 6개 책상 + 모니터/키보드/커피잔
     this._buildUI();   // 하단 UI 바 (출근/퇴근/자리비움 버튼, 접속자 수)
@@ -279,12 +287,89 @@ class LabScene extends Phaser.Scene {
     this.time.addEvent({ delay: 1000, loop: true, callback: this._tick, callbackScope: this });
   }
 
+  // ─── 키보드 이동 ─────────────────────────────────────────────────────────────
+
+  /** 방향키 / WASD 입력 오브젝트를 생성한다. */
+  _setupKeys() {
+    const K = Phaser.Input.Keyboard.KeyCodes;
+    this._keys = this.input.keyboard.addKeys({
+      up: K.UP, down: K.DOWN, left: K.LEFT, right: K.RIGHT,
+      w: K.W, a: K.A, s: K.S, d: K.D,
+    });
+  }
+
+  /**
+   * 매 프레임 호출. 방향키/WASD로 내 캐릭터를 이동시키고
+   * 방향에 맞는 walk 애니메이션을 재생한다.
+   */
+  update(time, delta) {
+    if (!this.myName || this._modal) return;
+    const c = this.chars[this.myName];
+    if (!c) return;
+
+    const k = this._keys;
+    const spd = SPEED * delta / 1000;
+    let dx = 0, dy = 0;
+    if (k.left.isDown  || k.a.isDown) dx -= spd;
+    if (k.right.isDown || k.d.isDown) dx += spd;
+    if (k.up.isDown    || k.w.isDown) dy -= spd;
+    if (k.down.isDown  || k.s.isDown) dy += spd;
+
+    // 대각선 이동 정규화
+    if (dx !== 0 && dy !== 0) { dx *= 0.707; dy *= 0.707; }
+
+    const moving = dx !== 0 || dy !== 0;
+
+    if (moving && !this._wasMoving) {
+      // 이동 시작: 떠다니는 idle tween 정지
+      c.tween?.pause();
+    } else if (!moving && this._wasMoving) {
+      // 이동 정지: idle 상태로 복귀
+      const cont = c.container;
+      c.tween?.destroy();
+      c.tween = this.tweens.add({
+        targets: cont, y: cont.y - 3, yoyo: true, repeat: -1,
+        duration: 1400 + Math.random() * 700, ease: 'Sine.easeInOut',
+      });
+      if (this.myStatus === 'working') {
+        const reg = CHARACTERS[this.myName];
+        if (reg) this._setSpriteExpr(c, reg.key, 'normal');
+      }
+    }
+    this._wasMoving = moving;
+    if (!moving) return;
+
+    // 위치 업데이트
+    const cont = c.container;
+    cont.x = Phaser.Math.Clamp(cont.x + dx, 30, W - 30);
+    cont.y = Phaser.Math.Clamp(cont.y + dy, WALL_H + 20, H - UI_H - 20);
+    // y 기반 depth: 앞에 있을수록(y 클수록) 높은 depth
+    cont.setDepth(Math.round(cont.y) + 14);
+
+    // 방향 walk 애니메이션 (working 상태일 때만)
+    if (this.myStatus !== 'working') return;
+    const reg = CHARACTERS[this.myName];
+    if (!reg) return;
+
+    const ax = Math.abs(dx), ay = Math.abs(dy);
+    const dir = ax > ay
+      ? (dx < 0 ? 'walk_left' : 'walk_right')
+      : (dy < 0 ? 'walk_up'   : 'walk_down');
+    const animKey = `${reg.key}_${dir}`;
+    if (this.anims.exists(animKey) && c.sprite?.anims.currentAnim?.key !== animKey) {
+      c.sprite.play(animKey);
+      if (c.sprite.height) c.sprite.setScale(SPRITE_TARGET_H / c.sprite.height);
+    }
+  }
+
   // ─── 애니메이션 등록 ─────────────────────────────────────────────────────────
 
   /** CHARACTERS 레지스트리의 anim 스펙을 Phaser 애니메이션으로 등록한다. */
   _createAnims() {
     Object.values(CHARACTERS).forEach(reg => {
       if (!reg.anim) return;
+
+      // 표정 애니메이션 (normal/happy/cry)
       Object.entries(reg.anim).forEach(([expr, spec]) => {
         const animKey = `${reg.key}_${expr}`;
         if (!this.anims.exists(animKey)) {
@@ -296,6 +381,17 @@ class LabScene extends Phaser.Scene {
           });
         }
       });
+
+      // 방향별 walk 애니메이션 (normal.png 4x4 기준)
+      if (reg.anim.normal) {
+        const normTex = charTexKey(reg.key, 'normal');
+        [['walk_down',0,3],['walk_left',4,7],['walk_right',8,11],['walk_up',12,15]].forEach(([dir, s, e]) => {
+          const key = `${reg.key}_${dir}`;
+          if (!this.anims.exists(key)) {
+            this.anims.create({ key, frames: this.anims.generateFrameNumbers(normTex, { start: s, end: e }), frameRate: 8, repeat: -1 });
+          }
+        });
+      }
     });
   }
 
@@ -473,9 +569,13 @@ class LabScene extends Phaser.Scene {
 
   /** 모든 책상을 그린다. */
   _drawDesks() {
-    // depth 6 = 캐릭터(5)보다 앞 → 책상/모니터가 캐릭터 하반신·몸통을 자연스럽게 가림
-    const g = this.add.graphics().setDepth(6);
-    DESKS.forEach(d => this._desk(g, d.x, d.y));
+    // 책상 행(row)별로 depth 설정: depth = desk.y + DH
+    // 캐릭터 depth = container.y + 14 이므로, 캐릭터가 책상 앞(y 큰 쪽)이면 자동으로 앞에 렌더링
+    const byY = new Map();
+    DESKS.forEach(d => {
+      if (!byY.has(d.y)) byY.set(d.y, this.add.graphics().setDepth(d.y + DH));
+      this._desk(byY.get(d.y), d.x, d.y);
+    });
   }
 
   /**
@@ -545,7 +645,8 @@ class LabScene extends Phaser.Scene {
 
     // Container: 이 캐릭터의 모든 Phaser 오브젝트를 담는 그룹.
     // 위치는 책상 상단(cx, cy)이 기준점(0,0). 모든 자식은 이 기준으로 그려짐.
-    const container = this.add.container(cx, cy).setDepth(5);
+    // depth = y + foot_offset → 이동 시 y-sort 기반 자동 깊이 정렬
+    const container = this.add.container(cx, cy).setDepth(cy + 14);
 
     // 캐릭터 몸체 — 레지스트리에 등록되고 이미지가 있으면 스프라이트, 아니면 도형으로 그린다.
     const reg = CHARACTERS[user.name];
