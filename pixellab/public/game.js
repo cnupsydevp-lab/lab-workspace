@@ -176,7 +176,7 @@ const expressionForStatus = (reg, status) => {
 const greetExpression = reg => (reg.expressions.includes('happy') ? 'happy' : 'normal');
 
 /** 스프라이트 캐릭터의 화면상 목표 높이(px). 원본 해상도와 무관하게 일정한 크기로 보이도록 스케일. */
-const SPRITE_TARGET_H = 122;
+const SPRITE_TARGET_H = 88;
 
 // ─── BootScene ───────────────────────────────────────────────────────────────
 
