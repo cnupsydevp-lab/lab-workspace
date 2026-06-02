@@ -142,7 +142,17 @@ const $hex = s => parseInt((s ?? '#888888').replace('#', ''), 16);
  *   3) 아래에 한 줄 추가:  '닉네임': { key: '<key>', expressions: [...] }
  */
 const CHARACTERS = {
-  '이은빈': { key: 'eunbin', expressions: ['normal', 'happy', 'cry'] },
+  '이은빈': {
+    key: 'eunbin',
+    expressions: ['normal', 'happy', 'cry'],
+    // anim: expression → { frameW, frameH, start, end, frameRate }
+    // normal: front-facing walk cycle (4 frames), happy: 15-frame expression, cry: 8-frame
+    anim: {
+      normal: { frameW: 210, frameH: 285, start: 0, end: 3,  frameRate: 6 },
+      happy:  { frameW: 215, frameH: 330, start: 0, end: 14, frameRate: 8 },
+      cry:    { frameW: 315, frameH: 440, start: 0, end: 7,  frameRate: 5 },
+    },
+  },
   // '홍길동': { key: 'gildong', expressions: ['normal', 'happy', 'cry', 'angry'] },
 };
 
@@ -178,11 +188,19 @@ class BootScene extends Phaser.Scene {
   constructor() { super('Boot'); }
 
   preload() {
-    // 등록된 모든 캐릭터의 표정 이미지를 로드 (파일이 없으면 자동으로 도형 캐릭터로 폴백)
+    // 등록된 모든 캐릭터 이미지를 로드.
+    // anim 스펙이 있으면 spritesheet, 없으면 정적 image 로드.
     Object.values(CHARACTERS).forEach(reg =>
-      reg.expressions.forEach(expr =>
-        this.load.image(charTexKey(reg.key, expr), `assets/characters/${reg.key}/${expr}.png`)
-      )
+      reg.expressions.forEach(expr => {
+        const key = charTexKey(reg.key, expr);
+        const url = `assets/characters/${reg.key}/${expr}.png`;
+        const spec = reg.anim?.[expr];
+        if (spec) {
+          this.load.spritesheet(key, url, { frameWidth: spec.frameW, frameHeight: spec.frameH });
+        } else {
+          this.load.image(key, url);
+        }
+      })
     );
   }
 
@@ -239,6 +257,7 @@ class LabScene extends Phaser.Scene {
   }
 
   create() {
+    this._createAnims(); // 애니메이션 등록 (spritesheet 캐릭터 전용)
     this._drawRoom();  // 연구실 배경 (벽, 바닥, 창문, 책장, 러그 등)
     this._drawDesks(); // 6개 책상 + 모니터/키보드/커피잔
     this._buildUI();   // 하단 UI 바 (출근/퇴근/자리비움 버튼, 접속자 수)
@@ -258,6 +277,26 @@ class LabScene extends Phaser.Scene {
 
     // 1초마다 타이머 갱신 (캐릭터 위 업무 시간 표시)
     this.time.addEvent({ delay: 1000, loop: true, callback: this._tick, callbackScope: this });
+  }
+
+  // ─── 애니메이션 등록 ─────────────────────────────────────────────────────────
+
+  /** CHARACTERS 레지스트리의 anim 스펙을 Phaser 애니메이션으로 등록한다. */
+  _createAnims() {
+    Object.values(CHARACTERS).forEach(reg => {
+      if (!reg.anim) return;
+      Object.entries(reg.anim).forEach(([expr, spec]) => {
+        const animKey = `${reg.key}_${expr}`;
+        if (!this.anims.exists(animKey)) {
+          this.anims.create({
+            key: animKey,
+            frames: this.anims.generateFrameNumbers(charTexKey(reg.key, expr), { start: spec.start ?? 0, end: spec.end }),
+            frameRate: spec.frameRate ?? 6,
+            repeat: -1,
+          });
+        }
+      });
+    });
   }
 
   // ─── 연구실 배경 그리기 ──────────────────────────────────────────────────────
@@ -519,12 +558,16 @@ class LabScene extends Phaser.Scene {
     container.add(g);
 
     // 스프라이트 (등록 캐릭터 전용). origin 하단 중앙 → 발이 책상 앞쪽에 닿도록 배치.
+    // Sprite 오브젝트를 사용해 정적/애니메이션 모두 지원.
     let sprite = null;
     if (hasSprite) {
-      sprite = this.add.image(0, 14, charTexKey(reg.key, greetExpression(reg))).setOrigin(0.5, 1);
+      const initExpr = greetExpression(reg);
+      sprite = this.add.sprite(0, 14, charTexKey(reg.key, initExpr)).setOrigin(0.5, 1);
+      const initAnimKey = `${reg.key}_${initExpr}`;
+      if (this.anims.exists(initAnimKey)) sprite.play(initAnimKey);
       if (sprite.height) sprite.setScale(SPRITE_TARGET_H / sprite.height);
       container.add(sprite);
-      // 출근 직후 2.5초간 환영(happy) 표정, 이후 상태별 표정으로 전환
+      // 출근 직후 2.5초간 환영(happy) 애니메이션, 이후 상태별 표정으로 전환
       this.time.delayedCall(2500, () => {
         const c = this.chars[user.name];
         if (c?.sprite) this._setSpriteExpr(c, reg.key, expressionForStatus(reg, user.status));
@@ -641,14 +684,19 @@ class LabScene extends Phaser.Scene {
   }
 
   /**
-   * 스프라이트 캐릭터의 표정을 바꾸고 목표 높이에 맞춰 스케일을 재계산한다.
-   * (표정 이미지마다 원본 크기가 달라도 화면상 크기를 일정하게 유지)
+   * 스프라이트 캐릭터의 표정/애니메이션을 바꾸고 목표 높이에 맞춰 스케일을 재계산한다.
+   * anim이 등록된 표정은 Phaser 애니메이션을 재생하고, 없으면 정적 텍스처로 전환.
    */
   _setSpriteExpr(c, key, expr) {
     if (!c?.sprite) return;
     const tex = charTexKey(key, expr);
-    if (!this.textures.exists(tex)) return;   // 이미지 없으면 현재 표정 유지
-    c.sprite.setTexture(tex);
+    if (!this.textures.exists(tex)) return;
+    const animKey = `${key}_${expr}`;
+    if (this.anims.exists(animKey)) {
+      c.sprite.play(animKey);
+    } else {
+      c.sprite.stop().setTexture(tex);
+    }
     if (c.sprite.height) c.sprite.setScale(SPRITE_TARGET_H / c.sprite.height);
   }
 
