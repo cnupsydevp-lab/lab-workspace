@@ -367,7 +367,8 @@ class LabScene extends Phaser.Scene {
     const FOOT = 14;
     let nx = Phaser.Math.Clamp(cont.x + dx, 30, W - 30);
     let ny = Phaser.Math.Clamp(cont.y + dy, WALL_H + 20, H - UI_H - 20);
-    if (this._collidesDesk(nx, ny + FOOT)) {
+    // 현재 이미 충돌 영역 안(책상 위 스폰 등)이면 이동 허용 — 빠져나올 수 있어야 함
+    if (!this._collidesDesk(cont.x, cont.y + FOOT) && this._collidesDesk(nx, ny + FOOT)) {
       if      (!this._collidesDesk(nx,     cont.y + FOOT)) ny = cont.y;
       else if (!this._collidesDesk(cont.x, ny + FOOT))     nx = cont.x;
       else    { nx = cont.x; ny = cont.y; }
