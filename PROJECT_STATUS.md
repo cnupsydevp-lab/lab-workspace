@@ -7,8 +7,8 @@ Last updated: 2026-06-06
 - Active local root: `D:\CodexCodeProj\LabWorkspace`
 - Repository: `https://github.com/cnupsydevp-lab/lab-workspace.git`
 - Branch: `main`
-- Latest pushed checkpoint: `39a41f2 feat: refine todo and attendance UX`
-- Latest deployed checkpoint: `39a41f2 feat: refine todo and attendance UX`
+- Latest pushed checkpoint: `12ce7c3 ci: use cloud logging for cloud build`
+- Latest deployed checkpoint: `12ce7c3 ci: use cloud logging for cloud build`
 - Main app: `pixellab`
 - Runtime: Node.js + Express + Socket.io, Phaser client served from `pixellab/public`
 - Cloud Run URL: `https://pixellab-922543866704.asia-northeast3.run.app`
@@ -119,15 +119,17 @@ No `AGENTS.md`, `AI_HANDOFF.md`, or `WORKING_SUMMARY.md` file currently exists i
 - [x] User manually checked the deployed service's planned 1-8 validation items and confirmed they worked.
 - [x] Added root `cloudbuild.yaml` for automatic deployment: `npm ci`, syntax checks, smoke test, Docker image build/push, and Cloud Run deploy.
 - [x] Kept Cloud Run deploy configuration at `--max-instances=1` while the app still has file/in-memory runtime state.
+- [x] Committed and pushed the automatic deployment config to `origin/main` as `3497e73 ci: add cloud run auto deploy config`.
+- [x] Fixed Cloud Build service-account logging requirements by adding `options.logging: CLOUD_LOGGING_ONLY`, committed and pushed as `12ce7c3 ci: use cloud logging for cloud build`.
+- [x] Created and ran the Cloud Build GitHub trigger for `main` push using `cloudbuild.yaml`; user confirmed the automatic build/deploy succeeded.
+- [x] Verified the Cloud Build service account has sufficient permissions for the configured pipeline through a successful trigger run.
 
 ## Current Git State
 
-Before this deployment-documentation update, local `main` was aligned with `origin/main` at `39a41f2`.
+Before this automatic-deployment success note, local `main` was aligned with `origin/main` at `12ce7c3`.
 
 Current documentation update scope:
 
-- Added: `cloudbuild.yaml`
-- Modified: `README.md`
 - Modified: `PROJECT_STATUS.md`
 
 `pixellab/node_modules/` exists locally after dependency installation and is ignored by `.gitignore`.
@@ -170,10 +172,10 @@ Collaboration rule: do not automatically commit or push changes in this project.
 - [x] Confirm deployment target and whether Cloud Run assumptions in comments are current.
 - [ ] Restore or redesign todo due-date input as a calendar/date-picker UX; the current shorthand text field is useful but lost the previous calendar affordance.
 - [x] Add Cloud Build automatic deployment config from `main` push after smoke checks are part of the build.
-- [ ] Create and verify the Cloud Build GitHub trigger in GCP Console for `main` push using `cloudbuild.yaml`.
-- [ ] Grant/confirm Cloud Build service account permissions: Cloud Run Admin, Artifact Registry Writer, and Service Account User.
+- [x] Create and verify the Cloud Build GitHub trigger in GCP Console for `main` push using `cloudbuild.yaml`.
+- [x] Grant/confirm Cloud Build service account permissions: Cloud Run Admin, Artifact Registry Writer, and Service Account User.
 - [ ] Move operational data for notices, todos, profiles, and future messages to durable storage before real lab use.
 
 ## Recommended Next Step
 
-Next, create the Cloud Build trigger in GCP Console for GitHub `main` push and verify one automatic deployment by merging/pushing this config. In parallel, plan durable storage for notices, todos, profiles, and messages; otherwise Cloud Run redeploys or instance restarts can lose file-backed runtime data.
+Next, plan durable storage for notices, todos, profiles, and messages; otherwise Cloud Run redeploys or instance restarts can lose file-backed runtime data. The other practical UI follow-up is restoring a calendar/date-picker affordance for todo due dates while keeping shorthand text input available if the lab wants both.
