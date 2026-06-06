@@ -1,0 +1,54 @@
+steps:
+  - name: node:20-alpine
+    id: validate
+    dir: pixellab
+    entrypoint: sh
+    args:
+      - -c
+      - >
+        npm ci &&
+        node --check server.js &&
+        node --check public/game.js &&
+        node --check scripts/smoke.js &&
+        node scripts/smoke.js
+
+  - name: gcr.io/cloud-builders/docker
+    id: build-image
+    dir: pixellab
+    args:
+      - build
+      - -t
+      - asia-northeast3-docker.pkg.dev/$PROJECT_ID/pixellab/pixellab:$COMMIT_SHA
+      - -t
+      - asia-northeast3-docker.pkg.dev/$PROJECT_ID/pixellab/pixellab:latest
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    id: push-commit-image
+    args:
+      - push
+      - asia-northeast3-docker.pkg.dev/$PROJECT_ID/pixellab/pixellab:$COMMIT_SHA
+
+  - name: gcr.io/cloud-builders/docker
+    id: push-latest-image
+    args:
+      - push
+      - asia-northeast3-docker.pkg.dev/$PROJECT_ID/pixellab/pixellab:latest
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    id: deploy-cloud-run
+    args:
+      - gcloud
+      - run
+      - deploy
+      - pixellab
+      - --image=asia-northeast3-docker.pkg.dev/$PROJECT_ID/pixellab/pixellab:$COMMIT_SHA
+      - --region=asia-northeast3
+      - --platform=managed
+      - --allow-unauthenticated
+      - --port=8080
+      - --max-instances=1
+
+images:
+  - asia-northeast3-docker.pkg.dev/$PROJECT_ID/pixellab/pixellab:$COMMIT_SHA
+  - asia-northeast3-docker.pkg.dev/$PROJECT_ID/pixellab/pixellab:latest

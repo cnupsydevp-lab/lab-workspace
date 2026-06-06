@@ -7,9 +7,11 @@ Last updated: 2026-06-06
 - Active local root: `D:\CodexCodeProj\LabWorkspace`
 - Repository: `https://github.com/cnupsydevp-lab/lab-workspace.git`
 - Branch: `main`
-- Last pushed checkpoint before this local work: `e09af8b`
+- Latest pushed checkpoint: `39a41f2 feat: refine todo and attendance UX`
+- Latest deployed checkpoint: `39a41f2 feat: refine todo and attendance UX`
 - Main app: `pixellab`
 - Runtime: Node.js + Express + Socket.io, Phaser client served from `pixellab/public`
+- Cloud Run URL: `https://pixellab-922543866704.asia-northeast3.run.app`
 
 This status was refreshed from the current folder after the project folder move. Current work should treat the active local root above as the project root and should not rely on earlier local paths from previous conversations.
 
@@ -26,6 +28,7 @@ This status was refreshed from the current folder after the project folder move.
 - `pixellab/public/game.js`: Phaser client UI, real-time lab scene logic, and panel state event bridge.
 - `pixellab/Dockerfile`: Node 20 Alpine container build.
 - `pixellab/.dockerignore`: Docker build exclusions.
+- `cloudbuild.yaml`: Cloud Build validation, image build/push, and Cloud Run deploy pipeline for `main` push automation.
 
 No `AGENTS.md`, `AI_HANDOFF.md`, or `WORKING_SUMMARY.md` file currently exists in this repository root.
 
@@ -108,16 +111,24 @@ No `AGENTS.md`, `AI_HANDOFF.md`, or `WORKING_SUMMARY.md` file currently exists i
 - [x] Reworked the timer tab from a placeholder focus timer into an automatic attendance-time panel.
 - [x] Added `arrivedAt` to server presence snapshots so the panel can show the actual check-in time separately from the active working-segment timer.
 - [x] Browser-checked the attendance timer: before check-in it shows a waiting state, after check-in it auto-increments, and switching to meeting preserves the accumulated working time.
+- [x] Committed and pushed the todo/attendance UX refinement to `origin/main` as `39a41f2 feat: refine todo and attendance UX`.
+- [x] Created Artifact Registry repository `pixellab` in GCP project `lab-workspace-498607`, region `asia-northeast3`.
+- [x] Built and pushed the Cloud Run image through Cloud Build: build ID `56182734-ad89-404a-b66d-dd7ced283379`, status `SUCCESS`.
+- [x] Deployed Cloud Run service `pixellab` revision `pixellab-00001-84p` in `asia-northeast3`.
+- [x] Confirmed deployed service URL: `https://pixellab-922543866704.asia-northeast3.run.app`.
+- [x] User manually checked the deployed service's planned 1-8 validation items and confirmed they worked.
+- [x] Added root `cloudbuild.yaml` for automatic deployment: `npm ci`, syntax checks, smoke test, Docker image build/push, and Cloud Run deploy.
+- [x] Kept Cloud Run deploy configuration at `--max-instances=1` while the app still has file/in-memory runtime state.
 
 ## Current Git State
 
-Current checkpoint scope:
+Before this deployment-documentation update, local `main` was aligned with `origin/main` at `39a41f2`.
 
+Current documentation update scope:
+
+- Added: `cloudbuild.yaml`
+- Modified: `README.md`
 - Modified: `PROJECT_STATUS.md`
-- Modified: `pixellab/public/game.js`
-- Modified: `pixellab/public/index.html`
-- Modified: `pixellab/scripts/smoke.js`
-- Modified: `pixellab/server.js`
 
 `pixellab/node_modules/` exists locally after dependency installation and is ignored by `.gitignore`.
 
@@ -135,6 +146,8 @@ Collaboration rule: do not automatically commit or push changes in this project.
 - The Dockerfile uses `npm ci --omit=dev`, so `pixellab/package-lock.json` should be kept if Docker deployment is expected.
 - `Start-Process -Environment` is not available in the observed PowerShell version; set `$env:PORT` before `Start-Process` when launching an alternate local port.
 - Runtime profile data is stored under `pixellab/data/`, which is intentionally ignored by Git.
+- First manual Cloud Run deployment is live at `https://pixellab-922543866704.asia-northeast3.run.app`.
+- Cloud Run local filesystem is ephemeral. Current file-backed JSON data under `pixellab/data/` is acceptable for MVP testing, but not for durable research-lab operation.
 
 ## Remaining Work
 
@@ -147,15 +160,20 @@ Collaboration rule: do not automatically commit or push changes in this project.
 - [x] Improve todo due-date UX: the current field is a date input and rejects free text such as `오늘`; decide whether to keep strict dates or support natural lab shorthand.
 - [x] Replace the placeholder focus timer with an automatic attendance-time calculator.
 - [x] Replace placeholder notice content with an editable or file-backed notice source.
-- [ ] Decide whether direct messages should remain session-only or be persisted under `pixellab/data/`.
+- [ ] Decide whether direct messages should remain session-only or move directly to durable storage.
 - [x] Expand `README.md` with setup, local run, smoke test, Docker, collaboration rules, and research-lab-oriented development candidates.
 - [ ] After manual browser review, decide whether to drop the retained safety stash.
 - [x] Decide whether the current local changes should be committed as one collaboration-ready checkpoint or split into UI, server events, and docs/test commits.
 - [x] Add a lightweight smoke-test command or script if this repo will be maintained by multiple agents/users.
 - [ ] User-facing visual pass for the enlarged name tag and speech bubble after the latest alignment adjustment.
 - [ ] Optional external-browser visual pass for exact desk collision edge cases near table boundaries.
-- [ ] Confirm deployment target and whether Cloud Run assumptions in comments are current.
+- [x] Confirm deployment target and whether Cloud Run assumptions in comments are current.
+- [ ] Restore or redesign todo due-date input as a calendar/date-picker UX; the current shorthand text field is useful but lost the previous calendar affordance.
+- [x] Add Cloud Build automatic deployment config from `main` push after smoke checks are part of the build.
+- [ ] Create and verify the Cloud Build GitHub trigger in GCP Console for `main` push using `cloudbuild.yaml`.
+- [ ] Grant/confirm Cloud Build service account permissions: Cloud Run Admin, Artifact Registry Writer, and Service Account User.
+- [ ] Move operational data for notices, todos, profiles, and future messages to durable storage before real lab use.
 
 ## Recommended Next Step
 
-Next, add todo priority/filtering if the lab wants the todo list to scale beyond a few items. Also do a quick human visual pass on the enlarged name tag/speech bubble and the new attendance timer panel.
+Next, create the Cloud Build trigger in GCP Console for GitHub `main` push and verify one automatic deployment by merging/pushing this config. In parallel, plan durable storage for notices, todos, profiles, and messages; otherwise Cloud Run redeploys or instance restarts can lose file-backed runtime data.

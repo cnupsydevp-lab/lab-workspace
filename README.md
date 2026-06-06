@@ -84,6 +84,60 @@ docker build -t pixellab .
 docker run --rm -p 8080:8080 pixellab
 ```
 
+## Cloud Run 배포
+
+2026-06-06 기준 1차 수동 배포가 완료되었고, 배포된 URL에서 기본 동작 확인도 마쳤습니다.
+
+- GCP project: `lab-workspace-498607`
+- Region: `asia-northeast3` (Seoul)
+- Cloud Run service: `pixellab`
+- Service URL: https://pixellab-922543866704.asia-northeast3.run.app
+- Artifact Registry image: `asia-northeast3-docker.pkg.dev/lab-workspace-498607/pixellab/pixellab:latest`
+- Deployed source checkpoint: `39a41f2 feat: refine todo and attendance UX`
+- Cloud Build image build: `56182734-ad89-404a-b66d-dd7ced283379`, `SUCCESS`
+
+수동 빌드/배포 흐름:
+
+```bash
+gcloud builds submit ./pixellab \
+  --tag asia-northeast3-docker.pkg.dev/lab-workspace-498607/pixellab/pixellab:latest
+
+gcloud run deploy pixellab \
+  --image asia-northeast3-docker.pkg.dev/lab-workspace-498607/pixellab/pixellab:latest \
+  --region asia-northeast3 \
+  --platform managed \
+  --allow-unauthenticated \
+  --port 8080
+```
+
+운영 메모:
+
+- 현재 서버 상태 일부는 메모리와 `pixellab/data/` 파일에 의존합니다. Cloud Run 파일시스템은 영구 저장소가 아니므로 실제 연구실 운영 전에는 공지/투두/메시지/프로필 저장소를 Firestore, Cloud SQL, Redis 등으로 옮기는 것이 좋습니다.
+- 파일/메모리 기반 상태를 유지하는 동안에는 Cloud Run `max-instances=1` 운영이 더 단순합니다.
+- 협업 배포는 `main` push 이후 Cloud Build 트리거가 빌드, smoke check, Cloud Run 배포를 자동 수행하는 방식이 가장 관리하기 쉽습니다.
+
+### 자동 배포
+
+`cloudbuild.yaml`은 GitHub `main` 브랜치 push/merge 후 다음 순서로 실행되도록 준비되어 있습니다.
+
+1. `npm ci`
+2. `node --check server.js`
+3. `node --check public/game.js`
+4. `node --check scripts/smoke.js`
+5. `node scripts/smoke.js`
+6. Docker image build/push
+7. Cloud Run deploy
+
+Cloud Build 콘솔에서 GitHub 저장소 `cnupsydevp-lab/lab-workspace`를 연결한 뒤, `main` 브랜치 push를 조건으로 하는 트리거를 만들고 빌드 구성 파일을 `cloudbuild.yaml`로 지정합니다.
+
+Cloud Build 서비스 계정에는 최소한 다음 권한이 필요합니다.
+
+- Cloud Run Admin
+- Artifact Registry Writer
+- Service Account User
+
+`main` push가 곧 배포가 되므로, GitHub에서는 `main` 직접 push보다 PR merge 중심으로 운영하고 branch protection을 켜는 것이 좋습니다.
+
 ## GitHub 협업 권장 방식
 
 이 저장소는 공동 작업용이므로 자동 커밋/푸시하지 않습니다. GitHub에 협업용으로 올릴 때는 다음 흐름을 권장합니다.
@@ -111,5 +165,5 @@ docker run --rm -p 8080:8080 pixellab
 - 상태 UX 개선: 상태 버튼을 순환형에서 명시적 메뉴/토글로 개선
 - 공지/메시지: 오늘의 공지, 실험 일정, 짧은 말풍선 메시지
 - 운영 저장소: 파일 기반 JSON에서 SQLite/Redis 같은 운영용 저장소로 전환
-- 배포 안정성: HTTPS, WebSocket 유지, Cloud Run 최소 인스턴스 정책 결정
-- 협업 자동화: GitHub Actions로 문법 검사와 smoke check 자동화
+- 배포 안정성: Cloud Build 트리거, smoke check, Cloud Run 인스턴스 정책 결정
+- 협업 자동화: `main` 보호 규칙, PR 리뷰, 자동 배포 전 검증 단계 구성
