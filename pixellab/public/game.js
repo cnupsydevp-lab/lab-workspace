@@ -726,31 +726,47 @@ class LabScene extends Phaser.Scene {
 
     // ── 이름표 배경 (RoundedRect) ── 스프라이트는 키가 커서 더 위에 띄운다.
     const tagBase = hasSprite ? -150 : -92;
-    const nw = user.name.length * 9 + 20; // 이름 길이에 따라 너비 동적 조정
+    const nw = Math.max(64, user.name.length * 13 + 24); // 이름 길이에 따라 너비 동적 조정
+    const nh = 26;
     const tagG = this.add.graphics();
     tagG.fillStyle(0x000000, 0.68);
-    tagG.fillRoundedRect(-nw / 2, tagBase, nw, 20, 3);  // 배경
+    tagG.fillRoundedRect(-nw / 2, tagBase, nw, nh, 4);  // 배경
     tagG.lineStyle(1, col, 0.5);
-    tagG.strokeRoundedRect(-nw / 2, tagBase, nw, 20, 3); // 색상 테두리
+    tagG.strokeRoundedRect(-nw / 2, tagBase, nw, nh, 4); // 색상 테두리
 
-    const nameTxt = this.add.text(0, tagBase + 10, user.name, {
-      fontFamily: '"Press Start 2P"', fontSize: 7, color: user.color, resolution: 2,
-    }).setOrigin(0.5, 1);
+    const nameTxt = this.add.text(0, tagBase + nh / 2, user.name, {
+      fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      fontSize: 13,
+      fontStyle: '800',
+      color: user.color,
+      resolution: 2,
+    }).setOrigin(0.5);
     container.add([tagG, nameTxt]);
 
     // ── 타이머 텍스트 (MM:SS 또는 HH:MM:SS) ──
-    const timerTxt = this.add.text(0, tagBase + 24, '00:00', {
-      fontFamily: '"Press Start 2P"', fontSize: 6, color: C.tMut, resolution: 2,
-    }).setOrigin(0.5, 1);
+    const timerTxt = this.add.text(0, tagBase + nh + 13, '00:00', {
+      fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      fontSize: 10,
+      fontStyle: '700',
+      color: C.tMut,
+      resolution: 2,
+    }).setOrigin(0.5);
     container.add(timerTxt);
 
     // ── 말풍선 (그래픽스 기반, 기본 비표시) ──
     // msgG: 말풍선 배경 + 꼬리 그림
     // msgTxt: 메시지 텍스트
     const msgG   = this.add.graphics();
-    const msgTxt = this.add.text(0, -102, '', {
-      fontFamily: '"Press Start 2P"', fontSize: 7, color: '#111111', resolution: 2,
-    }).setOrigin(0.5, 1).setVisible(false);
+    const msgTxt = this.add.text(0, -108, '', {
+      fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      fontSize: 13,
+      fontStyle: '700',
+      color: '#111111',
+      align: 'center',
+      lineSpacing: 2,
+      resolution: 2,
+      wordWrap: { width: 188, useAdvancedWrap: true },
+    }).setOrigin(0.5).setVisible(false);
     container.add([msgG, msgTxt]);
 
     this.chars[user.name] = { container, g, tagG, nameTxt, timerTxt, msgG, msgTxt, sprite, charKey: reg ? reg.key : null };
@@ -883,11 +899,20 @@ class LabScene extends Phaser.Scene {
     const c = this.chars[name];
     if (!c) return;
     c.msgTxt.setText(msg).setVisible(true);
-    const tw = Math.min(188, c.msgTxt.width + 16); // 최대 너비 188px
+    const paddingX = 14;
+    const paddingY = 9;
+    const tw = Math.min(220, Math.max(72, c.msgTxt.width + paddingX * 2));
+    const th = Math.max(34, c.msgTxt.height + paddingY * 2);
+    const top = -108 - th;
+    const bottom = -108;
+    c.msgTxt.setPosition(0, top + th / 2);
     c.msgG.clear();
-    c.msgG.fillStyle(0xffffff, 0.94);
-    c.msgG.fillRoundedRect(-tw / 2, -122, tw, 22, 3); // 말풍선 배경
-    c.msgG.fillTriangle(-6, -100, 6, -100, 0, -93);   // 꼬리 (아래 방향 삼각형)
+    c.msgG.fillStyle(0xffffff, 0.98);
+    c.msgG.fillRoundedRect(-tw / 2, top, tw, th, 6);
+    c.msgG.lineStyle(2, 0x2a2218, 0.22);
+    c.msgG.strokeRoundedRect(-tw / 2, top, tw, th, 6);
+    c.msgG.fillStyle(0xffffff, 0.98);
+    c.msgG.fillTriangle(-8, bottom - 1, 8, bottom - 1, 0, bottom + 10);
   }
 
   /** 말풍선을 숨긴다. */
@@ -1006,6 +1031,7 @@ class LabScene extends Phaser.Scene {
       onDirectMessage: payload => this.socket.emit('send_direct_message', payload),
       onTodoAdd: payload => this.socket.emit('todo_add', payload),
       onTodoToggle: payload => this.socket.emit('todo_toggle', payload),
+      onTodoUpdate: payload => this.socket.emit('todo_update', payload),
       onTodoDelete: payload => this.socket.emit('todo_delete', payload),
       onNoticeAdd: payload => this.socket.emit('notice_add', payload),
       onNoticeDelete: payload => this.socket.emit('notice_delete', payload),

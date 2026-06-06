@@ -1,13 +1,13 @@
 # Lab Workspace Project Status
 
-Last updated: 2026-06-02
+Last updated: 2026-06-06
 
 ## Current Root
 
 - Active local root: `D:\CodexCodeProj\LabWorkspace`
 - Repository: `https://github.com/cnupsydevp-lab/lab-workspace.git`
 - Branch: `main`
-- Current HEAD: `aceadde`
+- Last pushed checkpoint before this local work: `e09af8b`
 - Main app: `pixellab`
 - Runtime: Node.js + Express + Socket.io, Phaser client served from `pixellab/public`
 
@@ -89,17 +89,35 @@ No `AGENTS.md`, `AI_HANDOFF.md`, or `WORKING_SUMMARY.md` file currently exists i
 - [x] Preserved upstream movement/collision/player asset behavior while keeping local HTML controls, notices, direct messages, bubbles, todos, and panel event bridges.
 - [x] Removed the local idle-floating character tween from the merged client path so it does not fight the new keyboard movement/`player_move` updates.
 - [x] Re-ran merge validation: `node --check pixellab/server.js`, `node --check pixellab/public/game.js`, `node --check pixellab/scripts/smoke.js`, `git diff --check`, and `node pixellab/scripts/smoke.js`.
+- [x] Committed and pushed the collaborative workspace panel work to `origin/main` as `e09af8b feat: add collaborative workspace panel`.
+- [x] Re-checked GitHub sync on 2026-06-06: local `main` and `origin/main` are aligned with no ahead/behind commits.
+- [x] Refreshed this status document on 2026-06-06 to match the committed/pushed state.
+- [x] Ran local browser QA on `http://127.0.0.1:8080/` in a desktop-sized viewport: initial load rendered one Phaser canvas, check-in modal focused the nickname input, check-in switched to worker controls, and console errors/warnings were empty.
+- [x] Verified status transitions through the browser panel: `working -> meeting -> experiment -> working` updated the split overview counts and member badge text correctly.
+- [x] Verified panel workflows through the browser: notice add/delete, bubble set/clear, todo add/toggle/delete, and direct-message send/receive with a second Socket.io client.
+- [x] Verified keyboard movement integration through the browser: arrow-key input on the canvas emitted `player_move` updates to the second Socket.io client with increasing character x coordinates.
+- [x] Ran mobile viewport QA at `390x844`: canvas and game container matched at `370x247`, the panel moved below the stage, tabs stayed evenly sized, and the check-in modal/input stayed inside the viewport with no console errors/warnings.
+- [x] Added todo editing UX: each todo row now supports inline editing for task text, owner, and due date through a new `todo_update` Socket.io event.
+- [x] Changed todo due-date inputs from strict date fields to short text fields so lab shorthand such as `오늘` and `내일 오전` can be saved.
+- [x] Improved canvas speech bubble readability with a larger system UI font, wider rounded bubble background, stronger border, and word wrapping.
+- [x] Increased canvas name-tag readability with a larger system UI font, taller name-tag background, and larger timer text.
+- [x] Fixed speech bubble vertical alignment so the message text is centered inside the enlarged bubble instead of sitting near the bottom edge.
+- [x] Extended `pixellab/scripts/smoke.js` to verify `todo_update` with edited text, owner, and shorthand due date.
+- [x] Re-ran validation for the todo/bubble update: `node --check pixellab/server.js`, `node --check pixellab/public/game.js`, `node --check pixellab/scripts/smoke.js`, `git diff --check`, and `node pixellab/scripts/smoke.js`.
+- [x] Browser-checked todo editing on `http://127.0.0.1:8080/`: add with `오늘`, open inline edit form, update text/owner/due to `내일 오전`, save, and delete the QA item.
+- [x] Reworked the timer tab from a placeholder focus timer into an automatic attendance-time panel.
+- [x] Added `arrivedAt` to server presence snapshots so the panel can show the actual check-in time separately from the active working-segment timer.
+- [x] Browser-checked the attendance timer: before check-in it shows a waiting state, after check-in it auto-increments, and switching to meeting preserves the accumulated working time.
 
 ## Current Git State
 
-Current local changes:
+Current checkpoint scope:
 
-- Modified: `README.md`
 - Modified: `PROJECT_STATUS.md`
 - Modified: `pixellab/public/game.js`
 - Modified: `pixellab/public/index.html`
+- Modified: `pixellab/scripts/smoke.js`
 - Modified: `pixellab/server.js`
-- Untracked: `pixellab/scripts/smoke.js`
 
 `pixellab/node_modules/` exists locally after dependency installation and is ignored by `.gitignore`.
 
@@ -120,20 +138,24 @@ Collaboration rule: do not automatically commit or push changes in this project.
 
 ## Remaining Work
 
-- [ ] Run one manual visual pass in a normal desktop browser window, because the automated in-app browser screenshot API still timed out even though DOM/layout checks passed.
+- [x] Run one manual visual pass in a browser, including desktop and mobile-sized viewport checks.
 - [x] Replace the current status-cycle button with explicit status controls if users keep missing which status will be selected next.
 - [x] Continue UI polish on the Phaser canvas itself: bottom bar spacing and clearer status affordances.
 - [x] After desktop UI polish settles, add mobile-specific HTML controls for check-in, status selection, and checkout.
 - [x] Review message bubble behavior and timeout cleanup with actual `send_message` UI/trigger if that feature is exposed later.
-- [ ] Add editing/assignment metadata for todos if the lab needs real task ownership beyond simple add/complete/delete.
+- [x] Add editing/assignment metadata for todos if the lab needs real task ownership beyond simple add/complete/delete.
+- [x] Improve todo due-date UX: the current field is a date input and rejects free text such as `오늘`; decide whether to keep strict dates or support natural lab shorthand.
+- [x] Replace the placeholder focus timer with an automatic attendance-time calculator.
 - [x] Replace placeholder notice content with an editable or file-backed notice source.
 - [ ] Decide whether direct messages should remain session-only or be persisted under `pixellab/data/`.
 - [x] Expand `README.md` with setup, local run, smoke test, Docker, collaboration rules, and research-lab-oriented development candidates.
 - [ ] After manual browser review, decide whether to drop the retained safety stash.
-- [ ] Decide whether the current local changes should be committed as one collaboration-ready checkpoint or split into UI, server events, and docs/test commits.
+- [x] Decide whether the current local changes should be committed as one collaboration-ready checkpoint or split into UI, server events, and docs/test commits.
 - [x] Add a lightweight smoke-test command or script if this repo will be maintained by multiple agents/users.
+- [ ] User-facing visual pass for the enlarged name tag and speech bubble after the latest alignment adjustment.
+- [ ] Optional external-browser visual pass for exact desk collision edge cases near table boundaries.
 - [ ] Confirm deployment target and whether Cloud Run assumptions in comments are current.
 
 ## Recommended Next Step
 
-Run a manual desktop/mobile browser pass on the merged app, focusing on keyboard character movement, desk collision, HTML check-in controls, notices, direct messages, bubble messages, and todo add/toggle/delete. If that pass looks good, prepare a collaboration-friendly commit split rather than committing everything as one large mixed change.
+Next, add todo priority/filtering if the lab wants the todo list to scale beyond a few items. Also do a quick human visual pass on the enlarged name tag/speech bubble and the new attendance timer panel.

@@ -150,7 +150,7 @@ async function main() {
 
     await a.emit('check_in', { name: 'SmokeA' });
     await b.emit('check_in', { name: 'SmokeB' });
-    await a.waitFor('state_sync', users => users.some(user => user.name === 'SmokeA'));
+    await a.waitFor('state_sync', users => users.some(user => user.name === 'SmokeA' && typeof user.arrivedAt === 'number'));
     await b.waitFor('state_sync', users => users.some(user => user.name === 'SmokeB'));
 
     await a.emit('set_status', { status: 'meeting' });
@@ -167,6 +167,13 @@ async function main() {
     const todo = todos.find(item => item.text === 'Smoke todo');
     await a.emit('todo_toggle', { id: todo.id, done: true });
     await a.waitFor('todos_sync', items => items.some(item => item.id === todo.id && item.done === true));
+    await a.emit('todo_update', { id: todo.id, text: 'Smoke todo edited', owner: 'Smoke team', due: '오늘' });
+    await a.waitFor('todos_sync', items => items.some(item =>
+      item.id === todo.id &&
+      item.text === 'Smoke todo edited' &&
+      item.owner === 'Smoke team' &&
+      item.due === '오늘'
+    ));
     await a.emit('todo_delete', { id: todo.id });
     await a.waitFor('todos_sync', items => !items.some(item => item.id === todo.id));
 

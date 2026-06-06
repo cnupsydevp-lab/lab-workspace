@@ -290,6 +290,11 @@
       gap: 9px;
     }
 
+    .todo-row.editing {
+      grid-template-columns: minmax(0, 1fr);
+      align-items: stretch;
+    }
+
     .todo-row.done .todo-text {
       color: var(--muted);
       text-decoration: line-through;
@@ -304,6 +309,29 @@
       color: var(--muted);
       font-size: 12px;
       font-weight: 650;
+    }
+
+    .todo-actions {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .todo-edit-form {
+      display: grid;
+      gap: 8px;
+    }
+
+    .todo-edit-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 8px;
+    }
+
+    .todo-edit-actions {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 8px;
     }
 
     .form-stack {
@@ -363,6 +391,12 @@
       background: #241f1a;
     }
 
+    .panel-button.compact {
+      min-height: 34px;
+      padding: 0 10px;
+      font-size: 13px;
+    }
+
     .message-log {
       max-height: 180px;
       overflow: auto;
@@ -411,16 +445,39 @@
       overflow-wrap: anywhere;
     }
 
-    .timer-face {
-      min-height: 96px;
+    .attendance-timer {
       display: grid;
-      place-items: center;
+      gap: 10px;
       border: 1px solid #5c4b3f;
       border-radius: 8px;
       background: #171412;
-      font-family: var(--font-pixel);
-      font-size: clamp(24px, 4vw, 36px);
+      padding: 16px;
+    }
+
+    .attendance-time {
+      font-family: var(--font-ui);
+      font-size: clamp(34px, 6vw, 48px);
+      font-weight: 900;
+      line-height: 1;
       color: var(--green);
+    }
+
+    .attendance-sub {
+      color: var(--text);
+      font-family: var(--font-ui);
+      font-size: 15px;
+      font-weight: 800;
+      line-height: 1.45;
+    }
+
+    .attendance-meta {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-family: var(--font-ui);
+      font-size: 13px;
+      font-weight: 650;
+      line-height: 1.45;
     }
 
     .panel-actions {
@@ -799,7 +856,7 @@
             <form class="form-stack" id="todo-form">
               <input class="panel-input" id="todo-input" type="text" maxlength="100" placeholder="새 투두 입력">
               <input class="panel-input" id="todo-owner-input" type="text" maxlength="24" placeholder="담당자 또는 팀">
-              <input class="panel-input" id="todo-due-input" type="date" aria-label="마감일">
+              <input class="panel-input" id="todo-due-input" type="text" maxlength="24" placeholder="마감일">
               <button class="panel-button primary" type="submit">추가</button>
             </form>
           </div>
@@ -813,13 +870,20 @@
 
         <section class="panel-view" data-view="timer">
           <div class="mini-card">
-            <p class="mini-label">집중 타이머</p>
-            <div class="timer-face">25:00</div>
+            <p class="mini-label">출근 시간</p>
+            <div class="attendance-timer">
+              <div class="attendance-time" id="attendance-time">00:00</div>
+              <div class="attendance-sub" id="attendance-summary">출근하면 자동으로 시간이 계산됩니다.</div>
+              <div class="attendance-meta">
+                <span id="attendance-status">현재 상태: 대기</span>
+                <span id="attendance-since">출근 시각: -</span>
+                <span id="attendance-total">오늘 누적: 00:00</span>
+              </div>
+            </div>
           </div>
-          <div class="panel-actions">
-            <button class="tool-button" type="button">시작</button>
-            <button class="tool-button" type="button">정지</button>
-            <button class="tool-button" type="button">초기화</button>
+          <div class="mini-card">
+            <p class="mini-label">계산 방식</p>
+            <div class="list-row">작업중일 때만 현재 세션 시간이 증가하고, 회의/실험/자리비움 중에는 오늘 누적 시간이 유지됩니다.</div>
           </div>
         </section>
 
@@ -840,9 +904,57 @@
       if (el) el.textContent = value;
     };
 
+    const formatDuration = seconds => {
+      const safe = Math.max(0, Math.floor(seconds || 0));
+      const h = Math.floor(safe / 3600);
+      const m = Math.floor((safe % 3600) / 60);
+      const s = safe % 60;
+      return h > 0
+        ? `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+        : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+    };
+
+    const formatClock = timestamp => {
+      if (!timestamp) return '-';
+      return new Date(timestamp).toLocaleTimeString('ko-KR', {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    };
+
+    const getAttendanceSeconds = user => {
+      if (!user) return 0;
+      let seconds = user.totalToday ?? 0;
+      if (user.status === 'working' && user.checkInTime) {
+        seconds += Math.floor((Date.now() - user.checkInTime) / 1000);
+      }
+      return seconds;
+    };
+
+    const renderAttendanceTimer = () => {
+      const user = activeUsers.find(item => item.name === currentUserName) ?? activeUsers[0];
+      if (!user) {
+        setText('attendance-time', '00:00');
+        setText('attendance-summary', '출근하면 자동으로 시간이 계산됩니다.');
+        setText('attendance-status', '현재 상태: 대기');
+        setText('attendance-since', '출근 시각: -');
+        setText('attendance-total', '오늘 누적: 00:00');
+        return;
+      }
+
+      const meta = statusMeta[user.status] || { label: user.status || '상태 없음' };
+      const elapsed = getAttendanceSeconds(user);
+      setText('attendance-time', formatDuration(elapsed));
+      setText('attendance-summary', `${user.name}님의 오늘 출근 시간`);
+      setText('attendance-status', `현재 상태: ${meta.label}`);
+      setText('attendance-since', `출근 시각: ${formatClock(user.arrivedAt)}`);
+      setText('attendance-total', `오늘 누적: ${formatDuration(user.totalToday ?? 0)}`);
+    };
+
     const renderPresencePanel = users => {
       activeUsers = Array.isArray(users) ? users : [];
       renderDirectTargets();
+      renderAttendanceTimer();
       const countByStatus = activeUsers.reduce((acc, user) => {
         acc[user.status] = (acc[user.status] ?? 0) + 1;
         return acc;
@@ -890,6 +1002,8 @@
       renderPresencePanel(event.detail?.users);
     });
 
+    window.setInterval(renderAttendanceTimer, 1000);
+
     const checkinModal = document.getElementById('checkin-modal');
     const checkinForm = document.getElementById('checkin-form');
     const checkinName = document.getElementById('checkin-name');
@@ -907,6 +1021,7 @@
       directMessage: null,
       todoAdd: null,
       todoToggle: null,
+      todoUpdate: null,
       todoDelete: null,
       noticeAdd: null,
       noticeDelete: null,
@@ -914,6 +1029,7 @@
     let activeUsers = [];
     let currentUserName = null;
     let messageLog = [];
+    let editingTodoId = null;
 
     const renderDirectTargets = () => {
       const select = document.getElementById('direct-target');
@@ -963,6 +1079,7 @@
         onDirectMessage,
         onTodoAdd,
         onTodoToggle,
+        onTodoUpdate,
         onTodoDelete,
         onNoticeAdd,
         onNoticeDelete,
@@ -972,6 +1089,7 @@
         workspaceCallbacks.directMessage = onDirectMessage;
         workspaceCallbacks.todoAdd = onTodoAdd;
         workspaceCallbacks.todoToggle = onTodoToggle;
+        workspaceCallbacks.todoUpdate = onTodoUpdate;
         workspaceCallbacks.todoDelete = onTodoDelete;
         workspaceCallbacks.noticeAdd = onNoticeAdd;
         workspaceCallbacks.noticeDelete = onNoticeDelete;
@@ -979,6 +1097,7 @@
       setCurrentUser(name) {
         currentUserName = name;
         renderDirectTargets();
+        renderAttendanceTimer();
       },
       setPresenceMode(mode) {
         const isWorker = mode === 'worker';
@@ -1032,6 +1151,82 @@
         const row = document.createElement('div');
         row.className = `list-row todo-row${todo.done ? ' done' : ''}`;
 
+        if (editingTodoId === todo.id) {
+          row.classList.add('editing');
+
+          const form = document.createElement('form');
+          form.className = 'todo-edit-form';
+
+          const textInput = document.createElement('input');
+          textInput.className = 'panel-input';
+          textInput.type = 'text';
+          textInput.maxLength = 100;
+          textInput.value = todo.text || '';
+          textInput.setAttribute('aria-label', '투두 내용');
+
+          const metaGrid = document.createElement('div');
+          metaGrid.className = 'todo-edit-grid';
+
+          const ownerInput = document.createElement('input');
+          ownerInput.className = 'panel-input';
+          ownerInput.type = 'text';
+          ownerInput.maxLength = 24;
+          ownerInput.placeholder = '담당자';
+          ownerInput.value = todo.owner || '';
+          ownerInput.setAttribute('aria-label', '담당자');
+
+          const dueInput = document.createElement('input');
+          dueInput.className = 'panel-input';
+          dueInput.type = 'text';
+          dueInput.maxLength = 24;
+          dueInput.placeholder = '마감일';
+          dueInput.value = todo.due || '';
+          dueInput.setAttribute('aria-label', '마감일');
+
+          metaGrid.append(ownerInput, dueInput);
+
+          const actions = document.createElement('div');
+          actions.className = 'todo-edit-actions';
+
+          const save = document.createElement('button');
+          save.className = 'panel-button primary compact';
+          save.type = 'submit';
+          save.textContent = '저장';
+
+          const cancel = document.createElement('button');
+          cancel.className = 'panel-button compact';
+          cancel.type = 'button';
+          cancel.textContent = '취소';
+          cancel.addEventListener('click', () => {
+            editingTodoId = null;
+            renderTodos(items);
+          });
+
+          actions.append(save, cancel);
+
+          form.addEventListener('submit', event => {
+            event.preventDefault();
+            const text = textInput.value.trim();
+            if (!text) {
+              textInput.focus();
+              return;
+            }
+            workspaceCallbacks.todoUpdate?.({
+              id: todo.id,
+              text,
+              owner: ownerInput.value.trim(),
+              due: dueInput.value.trim(),
+            });
+            editingTodoId = null;
+          });
+
+          form.append(textInput, metaGrid, actions);
+          row.append(form);
+          list.append(row);
+          window.setTimeout(() => textInput.focus(), 0);
+          return;
+        }
+
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.checked = Boolean(todo.done);
@@ -1051,6 +1246,19 @@
         meta.textContent = details.join(' · ') || '담당 없음';
         body.append(text, meta);
 
+        const actions = document.createElement('div');
+        actions.className = 'todo-actions';
+
+        const edit = document.createElement('button');
+        edit.className = 'panel-button compact';
+        edit.type = 'button';
+        edit.textContent = '수정';
+        edit.setAttribute('aria-label', `${todo.text} 수정`);
+        edit.addEventListener('click', () => {
+          editingTodoId = todo.id;
+          renderTodos(items);
+        });
+
         const remove = document.createElement('button');
         remove.className = 'panel-button icon';
         remove.type = 'button';
@@ -1060,7 +1268,8 @@
           workspaceCallbacks.todoDelete?.({ id: todo.id });
         });
 
-        row.append(checkbox, body, remove);
+        actions.append(edit, remove);
+        row.append(checkbox, body, actions);
         list.append(row);
       });
     };

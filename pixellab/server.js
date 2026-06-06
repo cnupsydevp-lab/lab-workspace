@@ -182,6 +182,7 @@ function snapshot() {
     color: u.color,
     desk: u.desk,
     status: u.status,
+    arrivedAt: u.arrivedAt,
     checkInTime: u.checkInTime,
     totalToday: u.totalToday,
     message: u.message,
@@ -288,13 +289,15 @@ io.on('connection', (socket) => {
 
     const color = assignColor(existingProfile);
     const preferredDesk = Number.isInteger(existingProfile?.preferredDesk) ? existingProfile.preferredDesk : desk;
+    const checkedInAt = Date.now();
     users[socket.id] = {
       name: clean,
       color,
       desk,
       preferredDesk,
       status: 'working',
-      checkInTime: Date.now(),
+      arrivedAt: checkedInAt,
+      checkInTime: checkedInAt,
       totalToday: 0,
       message: null,
       msgTimer: null,
@@ -442,6 +445,19 @@ io.on('connection', (socket) => {
     const todo = todos.find(item => item.id === id);
     if (!todo) return;
     todo.done = Boolean(done);
+    todo.updatedAt = new Date().toISOString();
+    saveTodos();
+    publishTodos();
+  });
+
+  socket.on('todo_update', ({ id, text, owner, due }) => {
+    const todo = todos.find(item => item.id === id);
+    const clean = cleanText(text, 100);
+    if (!todo || !clean) return;
+
+    todo.text = clean;
+    todo.owner = cleanText(owner, 24) || '랩 공통';
+    todo.due = cleanText(due, 24);
     todo.updatedAt = new Date().toISOString();
     saveTodos();
     publishTodos();
