@@ -52,3 +52,6 @@ steps:
 images:
   - asia-northeast3-docker.pkg.dev/$PROJECT_ID/pixellab/pixellab:$COMMIT_SHA
   - asia-northeast3-docker.pkg.dev/$PROJECT_ID/pixellab/pixellab:latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY
