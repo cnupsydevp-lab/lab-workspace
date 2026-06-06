@@ -7,8 +7,8 @@ Last updated: 2026-06-06
 - Active local root: `D:\CodexCodeProj\LabWorkspace`
 - Repository: `https://github.com/cnupsydevp-lab/lab-workspace.git`
 - Branch: `main`
-- Latest pushed checkpoint: `12ce7c3 ci: use cloud logging for cloud build`
-- Latest deployed checkpoint: `12ce7c3 ci: use cloud logging for cloud build`
+- Latest app/deploy config checkpoint: `12ce7c3 ci: use cloud logging for cloud build`
+- Automatic deployment success recorded in docs after user-confirmed Cloud Build trigger run.
 - Main app: `pixellab`
 - Runtime: Node.js + Express + Socket.io, Phaser client served from `pixellab/public`
 - Cloud Run URL: `https://pixellab-922543866704.asia-northeast3.run.app`
