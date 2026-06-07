@@ -135,6 +135,10 @@ No `AGENTS.md`, `AI_HANDOFF.md`, or `WORKING_SUMMARY.md` file currently exists i
 - [x] User created the Firestore database in GCP project `lab-workspace-498607`.
 - [x] User added `Cloud Datastore User` / `roles/datastore.user` to the Cloud Run `pixellab` runtime service account.
 - [x] Re-ran local validation after Firestore IAM setup: `node --check server.js`, `node --check storage.js`, `node --check public\game.js`, `node --check scripts\smoke.js`, `node scripts\smoke.js`, and `git diff --check`.
+- [x] Committed and pushed the Firestore storage adapter work to `origin/main` as `835bb35 feat: add firestore storage adapter`.
+- [x] User set Cloud Run env vars `PIXELLAB_STORAGE=firestore` and `PIXELLAB_FIRESTORE_COLLECTION=pixellab_state`, then redeployed the service.
+- [x] Confirmed the deployed Cloud Run URL returned HTTP 200 and the app HTML contained `PPAI Lab Pixel` after the Firestore env-var deployment.
+- [x] User verified Firestore-backed notices and todos on the deployed Cloud Run URL: notice and todo workflows worked after the Firestore env-var deployment.
 
 ## Current Git State
 
@@ -188,10 +192,13 @@ Collaboration rule: do not automatically commit or push changes in this project.
 - [x] Grant/confirm Cloud Build service account permissions: Cloud Run Admin, Artifact Registry Writer, and Service Account User.
 - [ ] Move operational data for notices, todos, profiles, and future messages to durable storage before real lab use.
 - [x] Create/confirm the Firestore database in GCP project `lab-workspace-498607` and grant the Cloud Run runtime service account Firestore access.
-- [ ] Commit and push the Firestore storage adapter changes so Cloud Build can deploy the Firestore-capable server image.
-- [ ] Set Cloud Run env vars such as `PIXELLAB_STORAGE=firestore` and `PIXELLAB_FIRESTORE_COLLECTION=pixellab_state` after the Firestore-capable image is deployed.
+- [x] Commit and push the Firestore storage adapter changes so Cloud Build can deploy the Firestore-capable server image.
+- [x] Set Cloud Run env vars `PIXELLAB_STORAGE=firestore` and `PIXELLAB_FIRESTORE_COLLECTION=pixellab_state` after the Firestore-capable image is deployed.
+- [x] Verify Firestore-backed notice and todo persistence on the deployed URL.
+- [ ] Verify Firestore-backed profile reuse after checkout/check-in.
+- [ ] Verify direct-message restore after the recipient exits and re-enters with the same name.
 - [ ] After Firestore is enabled on Cloud Run and verified, consider relaxing `--max-instances=1`; keep it at 1 until movement/presence semantics are checked with multiple instances.
 
 ## Recommended Next Step
 
-Next, commit and push the Firestore-capable app changes after user approval so Cloud Build can deploy the new server image. After the build/deploy succeeds, set `PIXELLAB_STORAGE=firestore` and `PIXELLAB_FIRESTORE_COLLECTION=pixellab_state` on Cloud Run, then verify persistence on the deployed URL before restoring the todo date-picker UX.
+Next, complete the remaining Firestore QA for profile reuse and direct-message restore with two users when convenient. After that, restore the todo date-picker UX while keeping shorthand text entry available.
