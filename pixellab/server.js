@@ -186,6 +186,15 @@ function publishNotices() {
   io.emit('notices_sync', notices);
 }
 
+function sendWorkspaceSync(socket) {
+  socket.emit('state_sync', snapshot());
+  socket.emit('todos_sync', todos);
+  socket.emit('notices_sync', notices);
+
+  const user = users[socket.id];
+  if (user) socket.emit('direct_messages_sync', recentMessagesFor(user.name));
+}
+
 function recentMessagesFor(name) {
   return directMessages.filter(message => message.from === name || message.to === name).slice(-50);
 }
@@ -202,9 +211,11 @@ function handleSocketError(socket, err) {
 }
 
 io.on('connection', (socket) => {
-  socket.emit('state_sync', snapshot());
-  socket.emit('todos_sync', todos);
-  socket.emit('notices_sync', notices);
+  sendWorkspaceSync(socket);
+
+  socket.on('workspace_sync_request', () => {
+    sendWorkspaceSync(socket);
+  });
 
   socket.on('check_in', async ({ name }) => {
     try {

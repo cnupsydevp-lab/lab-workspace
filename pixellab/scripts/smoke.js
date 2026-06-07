@@ -149,6 +149,10 @@ async function main() {
     await b.connect();
 
     await a.waitFor('todos_sync', todos => Array.isArray(todos) && todos.length >= 3);
+    a.events = [];
+    await a.emit('workspace_sync_request');
+    await a.waitFor('todos_sync', todos => Array.isArray(todos) && todos.length >= 3);
+    await a.waitFor('notices_sync', notices => Array.isArray(notices) && notices.length >= 2);
 
     await a.emit('check_in', { name: 'SmokeA' });
     await b.emit('check_in', { name: 'SmokeB' });

@@ -139,6 +139,10 @@ No `AGENTS.md`, `AI_HANDOFF.md`, or `WORKING_SUMMARY.md` file currently exists i
 - [x] User set Cloud Run env vars `PIXELLAB_STORAGE=firestore` and `PIXELLAB_FIRESTORE_COLLECTION=pixellab_state`, then redeployed the service.
 - [x] Confirmed the deployed Cloud Run URL returned HTTP 200 and the app HTML contained `PPAI Lab Pixel` after the Firestore env-var deployment.
 - [x] User verified Firestore-backed notices and todos on the deployed Cloud Run URL: notice and todo workflows worked after the Firestore env-var deployment.
+- [x] Restored todo due-date picker UX while preserving shorthand entry: add/edit forms now expose a calendar date input plus a text shorthand input, saving either `YYYY-MM-DD` or lab shorthand such as `오늘 / 내일 오전`.
+- [x] Re-ran todo date-picker validation: `node --check server.js`, `node --check storage.js`, `node --check public\game.js`, `node --check scripts\smoke.js`, `node scripts\smoke.js`, `git diff --check`, static HTML checks for the date/shorthand controls, and local HTTP check on `http://127.0.0.1:18080`.
+- [x] Fixed initial workspace sync for notices and todos: the server now handles `workspace_sync_request`, the client requests sync after registering Socket.io listeners, and the smoke test verifies requested `todos_sync` and `notices_sync` responses.
+- [x] Re-ran validation after the initial sync fix: `node --check server.js`, `node --check storage.js`, `node --check public\game.js`, `node --check scripts\smoke.js`, `node scripts\smoke.js`, and `git diff --check`.
 
 ## Current Git State
 
@@ -186,7 +190,7 @@ Collaboration rule: do not automatically commit or push changes in this project.
 - [ ] User-facing visual pass for the enlarged name tag and speech bubble after the latest alignment adjustment.
 - [ ] Optional external-browser visual pass for exact desk collision edge cases near table boundaries.
 - [x] Confirm deployment target and whether Cloud Run assumptions in comments are current.
-- [ ] Restore or redesign todo due-date input as a calendar/date-picker UX; the current shorthand text field is useful but lost the previous calendar affordance.
+- [x] Restore or redesign todo due-date input as a calendar/date-picker UX while keeping shorthand text entry.
 - [x] Add Cloud Build automatic deployment config from `main` push after smoke checks are part of the build.
 - [x] Create and verify the Cloud Build GitHub trigger in GCP Console for `main` push using `cloudbuild.yaml`.
 - [x] Grant/confirm Cloud Build service account permissions: Cloud Run Admin, Artifact Registry Writer, and Service Account User.
@@ -195,10 +199,11 @@ Collaboration rule: do not automatically commit or push changes in this project.
 - [x] Commit and push the Firestore storage adapter changes so Cloud Build can deploy the Firestore-capable server image.
 - [x] Set Cloud Run env vars `PIXELLAB_STORAGE=firestore` and `PIXELLAB_FIRESTORE_COLLECTION=pixellab_state` after the Firestore-capable image is deployed.
 - [x] Verify Firestore-backed notice and todo persistence on the deployed URL.
+- [x] Fix initial notice/todo visibility so existing items appear after page load without requiring a new notice/todo write.
 - [ ] Verify Firestore-backed profile reuse after checkout/check-in.
 - [ ] Verify direct-message restore after the recipient exits and re-enters with the same name.
 - [ ] After Firestore is enabled on Cloud Run and verified, consider relaxing `--max-instances=1`; keep it at 1 until movement/presence semantics are checked with multiple instances.
 
 ## Recommended Next Step
 
-Next, complete the remaining Firestore QA for profile reuse and direct-message restore with two users when convenient. After that, restore the todo date-picker UX while keeping shorthand text entry available.
+Next, complete the remaining Firestore QA for profile reuse and direct-message restore with two users when convenient. After that, run a user-facing visual pass for the enlarged name tag/speech bubble and the restored todo date-picker on desktop and mobile.

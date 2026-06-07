@@ -309,6 +309,7 @@ class LabScene extends Phaser.Scene {
     this.socket.on('direct_messages_sync', onDirectMessages);
     this.socket.on('todos_sync', onTodos);
     this.socket.on('notices_sync', onNotices);
+    this.socket.emit('workspace_sync_request');
 
     // 씬 종료 시 이벤트 리스너 정리 (메모리 누수 방지)
     this.events.once('shutdown', () => {
