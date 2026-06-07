@@ -143,6 +143,8 @@ No `AGENTS.md`, `AI_HANDOFF.md`, or `WORKING_SUMMARY.md` file currently exists i
 - [x] Re-ran todo date-picker validation: `node --check server.js`, `node --check storage.js`, `node --check public\game.js`, `node --check scripts\smoke.js`, `node scripts\smoke.js`, `git diff --check`, static HTML checks for the date/shorthand controls, and local HTTP check on `http://127.0.0.1:18080`.
 - [x] Fixed initial workspace sync for notices and todos: the server now handles `workspace_sync_request`, the client requests sync after registering Socket.io listeners, and the smoke test verifies requested `todos_sync` and `notices_sync` responses.
 - [x] Re-ran validation after the initial sync fix: `node --check server.js`, `node --check storage.js`, `node --check public\game.js`, `node --check scripts\smoke.js`, `node scripts\smoke.js`, and `git diff --check`.
+- [x] Fixed accidental WASD movement while typing in panel inputs: character movement now pauses while focus is inside `input`, `textarea`, `select`, or contenteditable elements.
+- [x] Re-ran validation after the typing/movement fix: `node --check public\game.js`, `node --check server.js`, `node --check storage.js`, `node --check scripts\smoke.js`, `node scripts\smoke.js`, and `git diff --check`.
 
 ## Current Git State
 
@@ -200,6 +202,7 @@ Collaboration rule: do not automatically commit or push changes in this project.
 - [x] Set Cloud Run env vars `PIXELLAB_STORAGE=firestore` and `PIXELLAB_FIRESTORE_COLLECTION=pixellab_state` after the Firestore-capable image is deployed.
 - [x] Verify Firestore-backed notice and todo persistence on the deployed URL.
 - [x] Fix initial notice/todo visibility so existing items appear after page load without requiring a new notice/todo write.
+- [x] Prevent WASD character movement while typing English text in notices, todos, messages, or other panel fields.
 - [ ] Verify Firestore-backed profile reuse after checkout/check-in.
 - [ ] Verify direct-message restore after the recipient exits and re-enters with the same name.
 - [ ] After Firestore is enabled on Cloud Run and verified, consider relaxing `--max-instances=1`; keep it at 1 until movement/presence semantics are checked with multiple instances.
