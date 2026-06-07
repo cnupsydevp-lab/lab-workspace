@@ -84,6 +84,26 @@ docker build -t pixellab .
 docker run --rm -p 8080:8080 pixellab
 ```
 
+## Durable storage
+
+Local development uses JSON files under `pixellab/data/` by default. For Cloud Run operation, the app now supports Firestore through the same server-side storage adapter.
+
+Runtime settings:
+
+- `PIXELLAB_STORAGE=file` or unset: use local JSON files.
+- `PIXELLAB_STORAGE=firestore`: use Firestore for profiles, todos, notices, and recent direct-message history.
+- `PIXELLAB_FIRESTORE_COLLECTION=pixellab_state`: optional Firestore collection prefix; this is the recommended production value.
+
+Enable Firestore only after the Firestore database and Cloud Run runtime service-account access are confirmed:
+
+```powershell
+gcloud run services update pixellab `
+  --region asia-northeast3 `
+  --set-env-vars PIXELLAB_STORAGE=firestore,PIXELLAB_FIRESTORE_COLLECTION=pixellab_state
+```
+
+Keep `--max-instances=1` until Firestore-backed state is verified on the deployed service and multi-instance presence/movement behavior is reviewed.
+
 ## Cloud Run 배포
 
 2026-06-06 기준 1차 수동 배포가 완료되었고, 배포된 URL에서 기본 동작 확인도 마쳤습니다.

@@ -299,12 +299,14 @@ class LabScene extends Phaser.Scene {
       c.container.setDepth(Math.round(y) + 14);
     };
     const onDirectMessage = m => window.dispatchEvent(new CustomEvent('lab:direct-message', { detail: m }));
+    const onDirectMessages = messages => window.dispatchEvent(new CustomEvent('lab:direct-messages', { detail: { messages } }));
     const onTodos = todos => window.dispatchEvent(new CustomEvent('lab:todos', { detail: { todos } }));
     const onNotices = notices => window.dispatchEvent(new CustomEvent('lab:notices', { detail: { notices } }));
     this.socket.on('state_sync', onState);
     this.socket.on('lab_error',  onErr);
     this.socket.on('player_move', onMove);
     this.socket.on('direct_message', onDirectMessage);
+    this.socket.on('direct_messages_sync', onDirectMessages);
     this.socket.on('todos_sync', onTodos);
     this.socket.on('notices_sync', onNotices);
 
@@ -314,6 +316,7 @@ class LabScene extends Phaser.Scene {
       this.socket.off('lab_error',  onErr);
       this.socket.off('player_move', onMove);
       this.socket.off('direct_message', onDirectMessage);
+      this.socket.off('direct_messages_sync', onDirectMessages);
       this.socket.off('todos_sync', onTodos);
       this.socket.off('notices_sync', onNotices);
       if (this._pendingCheckinOk) this.socket.off('check_in_ok', this._pendingCheckinOk);

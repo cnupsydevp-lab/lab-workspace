@@ -2,16 +2,15 @@
  * PixelLab server.
  *
  * Express serves the Phaser client from public/, and Socket.io keeps the
- * lab presence state in sync. Lightweight user profiles are persisted to
- * pixellab/data/profiles.json so returning members keep their color and
- * preferred desk after a server restart.
+ * lab presence state in sync. Operational data can be stored in local JSON
+ * files for development or Firestore for Cloud Run operation.
  */
 
 const express = require('express');
-const fs = require('fs');
 const http = require('http');
 const path = require('path');
 const { Server } = require('socket.io');
+const { createStorage } = require('./storage');
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -19,9 +18,6 @@ const io = new Server(httpServer);
 
 const PORT = process.env.PORT || 8080;
 const DATA_DIR = process.env.PIXELLAB_DATA_DIR || path.join(__dirname, 'data');
-const PROFILES_FILE = path.join(DATA_DIR, 'profiles.json');
-const TODOS_FILE = path.join(DATA_DIR, 'todos.json');
-const NOTICES_FILE = path.join(DATA_DIR, 'notices.json');
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -50,82 +46,11 @@ const DEFAULT_NOTICES = [
 
 const users = {};
 const desks = new Array(MAX_DESKS).fill(null);
-let profiles = loadProfiles();
-let todos = loadTodos();
-let notices = loadNotices();
-
-function loadProfiles() {
-  try {
-    const raw = fs.readFileSync(PROFILES_FILE, 'utf8');
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch (err) {
-    if (err.code !== 'ENOENT') console.warn(`Could not load profiles: ${err.message}`);
-    return {};
-  }
-}
-
-function saveProfiles() {
-  try {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(PROFILES_FILE, `${JSON.stringify(profiles, null, 2)}\n`, 'utf8');
-  } catch (err) {
-    console.warn(`Could not save profiles: ${err.message}`);
-  }
-}
-
-function loadTodos() {
-  try {
-    const raw = fs.readFileSync(TODOS_FILE, 'utf8');
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (err) {
-    if (err.code !== 'ENOENT') console.warn(`Could not load todos: ${err.message}`);
-    return DEFAULT_TODOS.map((todo, idx) => ({
-      id: `sample-${idx + 1}`,
-      text: todo.text,
-      owner: todo.owner,
-      done: false,
-      createdAt: new Date().toISOString(),
-      sample: true,
-    }));
-  }
-}
-
-function loadNotices() {
-  try {
-    const raw = fs.readFileSync(NOTICES_FILE, 'utf8');
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (err) {
-    if (err.code !== 'ENOENT') console.warn(`Could not load notices: ${err.message}`);
-    return DEFAULT_NOTICES.map((notice, idx) => ({
-      id: `sample-notice-${idx + 1}`,
-      title: notice.title,
-      body: notice.body,
-      createdAt: new Date().toISOString(),
-      sample: true,
-    }));
-  }
-}
-
-function saveTodos() {
-  try {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(TODOS_FILE, `${JSON.stringify(todos, null, 2)}\n`, 'utf8');
-  } catch (err) {
-    console.warn(`Could not save todos: ${err.message}`);
-  }
-}
-
-function saveNotices() {
-  try {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(NOTICES_FILE, `${JSON.stringify(notices, null, 2)}\n`, 'utf8');
-  } catch (err) {
-    console.warn(`Could not save notices: ${err.message}`);
-  }
-}
+let storage = null;
+let profiles = {};
+let todos = [];
+let notices = [];
+let directMessages = [];
 
 function cleanName(name) {
   return String(name ?? '').trim().slice(0, 8);
@@ -191,7 +116,7 @@ function snapshot() {
   }));
 }
 
-function updateProfile(name, patch) {
+async function updateProfile(name, patch) {
   const now = new Date().toISOString();
   const existing = profiles[name] ?? { name, createdAt: now };
   profiles[name] = {
@@ -200,7 +125,7 @@ function updateProfile(name, patch) {
     name,
     updatedAt: now,
   };
-  saveProfiles();
+  await storage.saveProfiles(profiles);
   return profiles[name];
 }
 
@@ -210,7 +135,7 @@ function accumulateWorkingTime(user) {
   }
 }
 
-function checkout(socketId, lastStatus = 'done') {
+async function checkout(socketId, lastStatus = 'done') {
   const user = users[socketId];
   if (!user) return false;
 
@@ -218,7 +143,7 @@ function checkout(socketId, lastStatus = 'done') {
   if (user.msgTimer) clearTimeout(user.msgTimer);
 
   desks[user.desk] = null;
-  updateProfile(user.name, {
+  await updateProfile(user.name, {
     color: user.color,
     preferredDesk: user.preferredDesk,
     lastStatus,
@@ -228,7 +153,7 @@ function checkout(socketId, lastStatus = 'done') {
   return true;
 }
 
-function setUserStatus(socketId, status) {
+async function setUserStatus(socketId, status) {
   const user = users[socketId];
   if (!user) return false;
 
@@ -239,7 +164,7 @@ function setUserStatus(socketId, status) {
   user.status = nextStatus;
   user.checkInTime = nextStatus === 'working' ? Date.now() : null;
 
-  updateProfile(user.name, {
+  await updateProfile(user.name, {
     color: user.color,
     preferredDesk: user.preferredDesk,
     lastStatus: nextStatus,
@@ -261,12 +186,28 @@ function publishNotices() {
   io.emit('notices_sync', notices);
 }
 
+function recentMessagesFor(name) {
+  return directMessages.filter(message => message.from === name || message.to === name).slice(-50);
+}
+
+async function saveDirectMessage(message) {
+  directMessages.push(message);
+  directMessages = directMessages.slice(-200);
+  await storage.appendMessage(directMessages, message);
+}
+
+function handleSocketError(socket, err) {
+  console.error(err);
+  socket.emit('lab_error', 'Storage operation failed. Please try again.');
+}
+
 io.on('connection', (socket) => {
   socket.emit('state_sync', snapshot());
   socket.emit('todos_sync', todos);
   socket.emit('notices_sync', notices);
 
-  socket.on('check_in', ({ name }) => {
+  socket.on('check_in', async ({ name }) => {
+    try {
     if (users[socket.id]) return;
 
     const clean = cleanName(name);
@@ -306,7 +247,7 @@ io.on('connection', (socket) => {
     };
     desks[desk] = socket.id;
 
-    const profile = updateProfile(clean, {
+    const profile = await updateProfile(clean, {
       color,
       preferredDesk,
       lastStatus: 'working',
@@ -314,23 +255,43 @@ io.on('connection', (socket) => {
     });
 
     socket.emit('check_in_ok', { name: clean, profile: publicProfile(profile) });
+    socket.emit('direct_messages_sync', recentMessagesFor(clean));
     io.emit('state_sync', snapshot());
+    } catch (err) {
+      handleSocketError(socket, err);
+    }
   });
 
-  socket.on('check_out', () => {
-    if (checkout(socket.id, 'done')) io.emit('state_sync', snapshot());
+  socket.on('check_out', async () => {
+    try {
+      if (await checkout(socket.id, 'done')) io.emit('state_sync', snapshot());
+    } catch (err) {
+      handleSocketError(socket, err);
+    }
   });
 
-  socket.on('set_status', ({ status }) => {
-    if (setUserStatus(socket.id, status)) io.emit('state_sync', snapshot());
+  socket.on('set_status', async ({ status }) => {
+    try {
+      if (await setUserStatus(socket.id, status)) io.emit('state_sync', snapshot());
+    } catch (err) {
+      handleSocketError(socket, err);
+    }
   });
 
-  socket.on('set_away', () => {
-    if (setUserStatus(socket.id, 'away')) io.emit('state_sync', snapshot());
+  socket.on('set_away', async () => {
+    try {
+      if (await setUserStatus(socket.id, 'away')) io.emit('state_sync', snapshot());
+    } catch (err) {
+      handleSocketError(socket, err);
+    }
   });
 
-  socket.on('set_back', () => {
-    if (setUserStatus(socket.id, 'working')) io.emit('state_sync', snapshot());
+  socket.on('set_back', async () => {
+    try {
+      if (await setUserStatus(socket.id, 'working')) io.emit('state_sync', snapshot());
+    } catch (err) {
+      handleSocketError(socket, err);
+    }
   });
 
   socket.on('set_bubble', ({ message }) => {
@@ -376,7 +337,8 @@ io.on('connection', (socket) => {
     socket.broadcast.emit('player_move', { name: user.name, x, y });
   });
 
-  socket.on('send_direct_message', ({ to, message }) => {
+  socket.on('send_direct_message', async ({ to, message }) => {
+    try {
     const fromUser = users[socket.id];
     const text = cleanText(message, 160);
     const targetName = cleanName(to);
@@ -390,16 +352,22 @@ io.on('connection', (socket) => {
 
     const [targetSocketId, targetUser] = target;
     const payload = {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
       from: fromUser.name,
       to: targetUser.name,
       message: text,
       at: new Date().toISOString(),
     };
+    await saveDirectMessage(payload);
     socket.emit('direct_message', { ...payload, direction: 'sent' });
     io.to(targetSocketId).emit('direct_message', { ...payload, direction: 'received' });
+    } catch (err) {
+      handleSocketError(socket, err);
+    }
   });
 
-  socket.on('todo_add', ({ text, owner, due }) => {
+  socket.on('todo_add', async ({ text, owner, due }) => {
+    try {
     const user = users[socket.id];
     const clean = cleanText(text, 100);
     if (!clean) return;
@@ -412,11 +380,15 @@ io.on('connection', (socket) => {
       done: false,
       createdAt: new Date().toISOString(),
     });
-    saveTodos();
+    await storage.saveTodos(todos);
     publishTodos();
+    } catch (err) {
+      handleSocketError(socket, err);
+    }
   });
 
-  socket.on('notice_add', ({ title, body }) => {
+  socket.on('notice_add', async ({ title, body }) => {
+    try {
     const user = users[socket.id];
     const cleanTitle = cleanText(title, 60);
     const cleanBody = cleanText(body, 240);
@@ -429,28 +401,40 @@ io.on('connection', (socket) => {
       author: user?.name ?? '랩 공통',
       createdAt: new Date().toISOString(),
     });
-    saveNotices();
+    await storage.saveNotices(notices);
     publishNotices();
+    } catch (err) {
+      handleSocketError(socket, err);
+    }
   });
 
-  socket.on('notice_delete', ({ id }) => {
+  socket.on('notice_delete', async ({ id }) => {
+    try {
     const before = notices.length;
     notices = notices.filter(item => item.id !== id);
     if (notices.length === before) return;
-    saveNotices();
+    await storage.saveNotices(notices);
     publishNotices();
+    } catch (err) {
+      handleSocketError(socket, err);
+    }
   });
 
-  socket.on('todo_toggle', ({ id, done }) => {
+  socket.on('todo_toggle', async ({ id, done }) => {
+    try {
     const todo = todos.find(item => item.id === id);
     if (!todo) return;
     todo.done = Boolean(done);
     todo.updatedAt = new Date().toISOString();
-    saveTodos();
+    await storage.saveTodos(todos);
     publishTodos();
+    } catch (err) {
+      handleSocketError(socket, err);
+    }
   });
 
-  socket.on('todo_update', ({ id, text, owner, due }) => {
+  socket.on('todo_update', async ({ id, text, owner, due }) => {
+    try {
     const todo = todos.find(item => item.id === id);
     const clean = cleanText(text, 100);
     if (!todo || !clean) return;
@@ -459,21 +443,44 @@ io.on('connection', (socket) => {
     todo.owner = cleanText(owner, 24) || '랩 공통';
     todo.due = cleanText(due, 24);
     todo.updatedAt = new Date().toISOString();
-    saveTodos();
+    await storage.saveTodos(todos);
     publishTodos();
+    } catch (err) {
+      handleSocketError(socket, err);
+    }
   });
 
-  socket.on('todo_delete', ({ id }) => {
+  socket.on('todo_delete', async ({ id }) => {
+    try {
     const before = todos.length;
     todos = todos.filter(item => item.id !== id);
     if (todos.length === before) return;
-    saveTodos();
+    await storage.saveTodos(todos);
     publishTodos();
+    } catch (err) {
+      handleSocketError(socket, err);
+    }
   });
 
-  socket.on('disconnect', () => {
-    if (checkout(socket.id, 'disconnected')) io.emit('state_sync', snapshot());
+  socket.on('disconnect', async () => {
+    try {
+      if (await checkout(socket.id, 'disconnected')) io.emit('state_sync', snapshot());
+    } catch (err) {
+      console.error(err);
+    }
   });
 });
 
-httpServer.listen(PORT, () => console.log(`PixelLab server running on port ${PORT}`));
+async function start() {
+  storage = createStorage({ dataDir: DATA_DIR });
+  profiles = await storage.loadProfiles();
+  todos = await storage.loadTodos(DEFAULT_TODOS);
+  notices = await storage.loadNotices(DEFAULT_NOTICES);
+  directMessages = (await storage.loadMessages()).slice(-200);
+  httpServer.listen(PORT, () => console.log(`PixelLab server running on port ${PORT}`));
+}
+
+start().catch(err => {
+  console.error(err);
+  process.exitCode = 1;
+});

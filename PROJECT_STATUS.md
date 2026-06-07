@@ -123,6 +123,18 @@ No `AGENTS.md`, `AI_HANDOFF.md`, or `WORKING_SUMMARY.md` file currently exists i
 - [x] Fixed Cloud Build service-account logging requirements by adding `options.logging: CLOUD_LOGGING_ONLY`, committed and pushed as `12ce7c3 ci: use cloud logging for cloud build`.
 - [x] Created and ran the Cloud Build GitHub trigger for `main` push using `cloudbuild.yaml`; user confirmed the automatic build/deploy succeeded.
 - [x] Verified the Cloud Build service account has sufficient permissions for the configured pipeline through a successful trigger run.
+- [x] Rechecked the current root on 2026-06-06 before durable-storage work: `D:\CodexCodeProj\LabWorkspace`, branch `main`, aligned with `origin/main`, and a clean starting worktree.
+- [x] Reviewed `README.md`, `PROJECT_STATUS.md`, `cloudbuild.yaml`, `pixellab/package.json`, `pixellab/server.js`, `pixellab/public/index.html`, and `pixellab/public/game.js` before changing storage behavior.
+- [x] Compared durable-storage options for Cloud Run operation and selected Firestore as the first implementation target because it fits Cloud Run service-account auth and small document-style lab state better than Cloud SQL, Redis/Memorystore, or Cloud Storage JSON files.
+- [x] Added a storage adapter layer in `pixellab/storage.js`: local file storage remains the default, while `PIXELLAB_STORAGE=firestore` enables Firestore-backed profiles, todos, notices, and direct-message history.
+- [x] Refactored `pixellab/server.js` so profiles, todos, notices, and direct messages go through the storage adapter instead of hard-coded synchronous JSON helpers.
+- [x] Changed direct messages from purely session-only events to recent-message persistence: the server keeps the latest 200 messages and sends each checked-in user their latest 50 relevant messages.
+- [x] Added client handling for `direct_messages_sync` so the message panel restores stored sent/received messages after check-in.
+- [x] Extended `pixellab/scripts/smoke.js` to verify that a direct message is restored after the recipient checks out and checks back in.
+- [x] Re-ran validation after the storage refactor: `node --check server.js`, `node --check public\game.js`, `node --check scripts\smoke.js`, `node scripts\smoke.js`, and `git diff --check`.
+- [x] User created the Firestore database in GCP project `lab-workspace-498607`.
+- [x] User added `Cloud Datastore User` / `roles/datastore.user` to the Cloud Run `pixellab` runtime service account.
+- [x] Re-ran local validation after Firestore IAM setup: `node --check server.js`, `node --check storage.js`, `node --check public\game.js`, `node --check scripts\smoke.js`, `node scripts\smoke.js`, and `git diff --check`.
 
 ## Current Git State
 
@@ -162,7 +174,7 @@ Collaboration rule: do not automatically commit or push changes in this project.
 - [x] Improve todo due-date UX: the current field is a date input and rejects free text such as `오늘`; decide whether to keep strict dates or support natural lab shorthand.
 - [x] Replace the placeholder focus timer with an automatic attendance-time calculator.
 - [x] Replace placeholder notice content with an editable or file-backed notice source.
-- [ ] Decide whether direct messages should remain session-only or move directly to durable storage.
+- [x] Decide whether direct messages should remain session-only or move directly to durable storage.
 - [x] Expand `README.md` with setup, local run, smoke test, Docker, collaboration rules, and research-lab-oriented development candidates.
 - [ ] After manual browser review, decide whether to drop the retained safety stash.
 - [x] Decide whether the current local changes should be committed as one collaboration-ready checkpoint or split into UI, server events, and docs/test commits.
@@ -175,7 +187,11 @@ Collaboration rule: do not automatically commit or push changes in this project.
 - [x] Create and verify the Cloud Build GitHub trigger in GCP Console for `main` push using `cloudbuild.yaml`.
 - [x] Grant/confirm Cloud Build service account permissions: Cloud Run Admin, Artifact Registry Writer, and Service Account User.
 - [ ] Move operational data for notices, todos, profiles, and future messages to durable storage before real lab use.
+- [x] Create/confirm the Firestore database in GCP project `lab-workspace-498607` and grant the Cloud Run runtime service account Firestore access.
+- [ ] Commit and push the Firestore storage adapter changes so Cloud Build can deploy the Firestore-capable server image.
+- [ ] Set Cloud Run env vars such as `PIXELLAB_STORAGE=firestore` and `PIXELLAB_FIRESTORE_COLLECTION=pixellab_state` after the Firestore-capable image is deployed.
+- [ ] After Firestore is enabled on Cloud Run and verified, consider relaxing `--max-instances=1`; keep it at 1 until movement/presence semantics are checked with multiple instances.
 
 ## Recommended Next Step
 
-Next, plan durable storage for notices, todos, profiles, and messages; otherwise Cloud Run redeploys or instance restarts can lose file-backed runtime data. The other practical UI follow-up is restoring a calendar/date-picker affordance for todo due dates while keeping shorthand text input available if the lab wants both.
+Next, commit and push the Firestore-capable app changes after user approval so Cloud Build can deploy the new server image. After the build/deploy succeeds, set `PIXELLAB_STORAGE=firestore` and `PIXELLAB_FIRESTORE_COLLECTION=pixellab_state` on Cloud Run, then verify persistence on the deployed URL before restoring the todo date-picker UX.

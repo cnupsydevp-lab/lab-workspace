@@ -1386,6 +1386,15 @@
       renderMessages();
     });
 
+    window.addEventListener('lab:direct-messages', event => {
+      const messages = Array.isArray(event.detail?.messages) ? event.detail.messages : [];
+      messageLog = messages.slice().reverse().map(item => ({
+        ...item,
+        direction: item.from === currentUserName ? 'sent' : 'received',
+      }));
+      renderMessages();
+    });
+
     window.addEventListener('lab:todos', event => {
       renderTodos(event.detail?.todos);
     });

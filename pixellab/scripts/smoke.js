@@ -9,6 +9,7 @@ const BASE_IO = `${BASE_HTTP}/socket.io/?EIO=4&transport=polling`;
 const DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'pixellab-smoke-'));
 const TODOS_FILE = path.join(DATA_DIR, 'todos.json');
 const NOTICES_FILE = path.join(DATA_DIR, 'notices.json');
+const MESSAGES_FILE = path.join(DATA_DIR, 'messages.json');
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -127,6 +128,7 @@ async function waitForHttp() {
 async function main() {
   removeIfExists(TODOS_FILE);
   removeIfExists(NOTICES_FILE);
+  removeIfExists(MESSAGES_FILE);
 
   const server = spawn(process.execPath, ['server.js'], {
     cwd: path.join(__dirname, '..'),
@@ -162,6 +164,16 @@ async function main() {
     await a.emit('send_direct_message', { to: 'SmokeB', message: 'hello smoke' });
     await b.waitFor('direct_message', msg => msg.from === 'SmokeA' && msg.message === 'hello smoke');
 
+    await b.emit('check_out');
+    await a.waitFor('state_sync', users => !users.some(user => user.name === 'SmokeB'));
+    const b2 = new PollingClient('B2');
+    await b2.connect();
+    await b2.emit('check_in', { name: 'SmokeB' });
+    await b2.waitFor('direct_messages_sync', messages =>
+      Array.isArray(messages) &&
+      messages.some(msg => msg.from === 'SmokeA' && msg.to === 'SmokeB' && msg.message === 'hello smoke')
+    );
+
     await a.emit('todo_add', { text: 'Smoke todo', owner: 'SmokeA', due: '2026-06-03' });
     const todos = await a.waitFor('todos_sync', items => items.some(item => item.text === 'Smoke todo'));
     const todo = todos.find(item => item.text === 'Smoke todo');
@@ -184,7 +196,7 @@ async function main() {
     await a.waitFor('notices_sync', items => !items.some(item => item.id === notice.id));
 
     await a.emit('check_out');
-    await b.emit('check_out');
+    await b2.emit('check_out');
 
     console.log('Smoke test passed');
   } finally {
