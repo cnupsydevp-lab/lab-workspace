@@ -145,6 +145,9 @@ No `AGENTS.md`, `AI_HANDOFF.md`, or `WORKING_SUMMARY.md` file currently exists i
 - [x] Re-ran validation after the initial sync fix: `node --check server.js`, `node --check storage.js`, `node --check public\game.js`, `node --check scripts\smoke.js`, `node scripts\smoke.js`, and `git diff --check`.
 - [x] Fixed accidental WASD movement while typing in panel inputs: character movement now pauses while focus is inside `input`, `textarea`, `select`, or contenteditable elements.
 - [x] Re-ran validation after the typing/movement fix: `node --check public\game.js`, `node --check server.js`, `node --check storage.js`, `node --check scripts\smoke.js`, `node scripts\smoke.js`, and `git diff --check`.
+- [x] Reviewed and dropped the old pre-pull safety stash `stash@{0}: codex-local-work-before-pull-20260602`; it was based on the older `ff0b1c5` state and is superseded by current `main`.
+- [x] Verified Firestore-backed profile reuse on the deployed Cloud Run URL: QA user `Pl803d` kept color `#A052E0` and preferred desk `0` after checkout and same-name re-entry.
+- [x] Verified Firestore-backed direct-message restore on the deployed Cloud Run URL: QA sender `Al803d` sent `qa-l803d` to `Bl803d`, and the message restored after `Bl803d` checked out and re-entered with the same name.
 
 ## Current Git State
 
@@ -156,7 +159,7 @@ Current documentation update scope:
 
 `pixellab/node_modules/` exists locally after dependency installation and is ignored by `.gitignore`.
 
-The pre-pull safety stash is still retained as `stash@{0}` with message `codex-local-work-before-pull-20260602` until the merged working tree is manually reviewed.
+The old pre-pull safety stash `codex-local-work-before-pull-20260602` has been reviewed and dropped. `git stash list` is currently empty.
 
 Collaboration rule: do not automatically commit or push changes in this project. Because this repository is shared with other collaborators, inspect and report Git state first, and only commit or push after the user explicitly approves that specific action and scope.
 
@@ -186,7 +189,7 @@ Collaboration rule: do not automatically commit or push changes in this project.
 - [x] Replace placeholder notice content with an editable or file-backed notice source.
 - [x] Decide whether direct messages should remain session-only or move directly to durable storage.
 - [x] Expand `README.md` with setup, local run, smoke test, Docker, collaboration rules, and research-lab-oriented development candidates.
-- [ ] After manual browser review, decide whether to drop the retained safety stash.
+- [x] After manual browser review, decide whether to drop the retained safety stash.
 - [x] Decide whether the current local changes should be committed as one collaboration-ready checkpoint or split into UI, server events, and docs/test commits.
 - [x] Add a lightweight smoke-test command or script if this repo will be maintained by multiple agents/users.
 - [ ] User-facing visual pass for the enlarged name tag and speech bubble after the latest alignment adjustment.
@@ -196,17 +199,17 @@ Collaboration rule: do not automatically commit or push changes in this project.
 - [x] Add Cloud Build automatic deployment config from `main` push after smoke checks are part of the build.
 - [x] Create and verify the Cloud Build GitHub trigger in GCP Console for `main` push using `cloudbuild.yaml`.
 - [x] Grant/confirm Cloud Build service account permissions: Cloud Run Admin, Artifact Registry Writer, and Service Account User.
-- [ ] Move operational data for notices, todos, profiles, and future messages to durable storage before real lab use.
+- [x] Move operational data for notices, todos, profiles, and future messages to durable storage before real lab use.
 - [x] Create/confirm the Firestore database in GCP project `lab-workspace-498607` and grant the Cloud Run runtime service account Firestore access.
 - [x] Commit and push the Firestore storage adapter changes so Cloud Build can deploy the Firestore-capable server image.
 - [x] Set Cloud Run env vars `PIXELLAB_STORAGE=firestore` and `PIXELLAB_FIRESTORE_COLLECTION=pixellab_state` after the Firestore-capable image is deployed.
 - [x] Verify Firestore-backed notice and todo persistence on the deployed URL.
 - [x] Fix initial notice/todo visibility so existing items appear after page load without requiring a new notice/todo write.
 - [x] Prevent WASD character movement while typing English text in notices, todos, messages, or other panel fields.
-- [ ] Verify Firestore-backed profile reuse after checkout/check-in.
-- [ ] Verify direct-message restore after the recipient exits and re-enters with the same name.
+- [x] Verify Firestore-backed profile reuse after checkout/check-in.
+- [x] Verify direct-message restore after the recipient exits and re-enters with the same name.
 - [ ] After Firestore is enabled on Cloud Run and verified, consider relaxing `--max-instances=1`; keep it at 1 until movement/presence semantics are checked with multiple instances.
 
 ## Recommended Next Step
 
-Next, complete the remaining Firestore QA for profile reuse and direct-message restore with two users when convenient. After that, run a user-facing visual pass for the enlarged name tag/speech bubble and the restored todo date-picker on desktop and mobile.
+Next, run a user-facing visual pass for the enlarged name tag/speech bubble and the restored todo date-picker on desktop and mobile. Keep Cloud Run `--max-instances=1` until multi-instance Socket.io presence/movement behavior is explicitly designed and tested.
