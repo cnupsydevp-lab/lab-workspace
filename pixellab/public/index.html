@@ -507,12 +507,14 @@
       font-weight: 700;
     }
 
-    input[type="text"] {
+    input[type="text"],
+    input[type="password"] {
       -webkit-appearance: none;
       font-size: 16px !important;
     }
 
-    #checkin-modal {
+    #checkin-modal,
+    #access-modal {
       position: absolute;
       inset: 0;
       z-index: 20;
@@ -522,7 +524,8 @@
       background: rgba(12, 10, 8, 0.68);
     }
 
-    #checkin-modal[hidden] {
+    #checkin-modal[hidden],
+    #access-modal[hidden] {
       display: none;
     }
 
@@ -551,7 +554,8 @@
       text-align: center;
     }
 
-    #checkin-name {
+    #checkin-name,
+    #access-code {
       width: 100%;
       height: 46px;
       border: 2px solid #9a7a50;
@@ -567,7 +571,8 @@
       box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
     }
 
-    #checkin-name:focus {
+    #checkin-name:focus,
+    #access-code:focus {
       border-color: var(--amber);
     }
 
@@ -601,6 +606,20 @@
     .checkin-button.primary {
       background: #8a6840;
       border-color: #b89462;
+    }
+
+    .access-reset {
+      align-self: start;
+      justify-self: start;
+      min-height: 30px;
+      border: 1px solid #6e5a4a;
+      border-radius: 4px;
+      background: #2a231d;
+      color: var(--muted);
+      font-family: var(--font-ui);
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
     }
 
     #lab-action-bar {
@@ -784,12 +803,25 @@
           </div>
         </form>
       </div>
+      <div id="access-modal" hidden role="dialog" aria-modal="true" aria-labelledby="access-title">
+        <form class="checkin-dialog" id="access-form">
+          <h2 class="checkin-title" id="access-title">Lab access</h2>
+          <p class="checkin-subtitle">연구실 접근 코드를 입력하세요.</p>
+          <input id="access-code" type="password" autocomplete="current-password" placeholder="Access code">
+          <p class="checkin-error" id="access-error" aria-live="polite"></p>
+          <div class="checkin-actions">
+            <button class="checkin-button primary" type="submit">입장</button>
+            <button class="checkin-button" type="button" id="access-clear">초기화</button>
+          </div>
+        </form>
+      </div>
     </main>
 
     <aside id="workspace-panel" aria-label="워크스페이스 패널">
       <header class="panel-head">
         <h1 class="panel-title">PPAI Lab</h1>
         <p class="panel-subtitle">workspace board</p>
+        <button class="access-reset" type="button" id="access-reset">접근 코드 초기화</button>
       </header>
 
       <nav id="panel-tabs" aria-label="소형 기능">
@@ -1026,10 +1058,17 @@
     const checkinName = document.getElementById('checkin-name');
     const checkinError = document.getElementById('checkin-error');
     const checkinCancel = document.getElementById('checkin-cancel');
+    const accessModal = document.getElementById('access-modal');
+    const accessForm = document.getElementById('access-form');
+    const accessCode = document.getElementById('access-code');
+    const accessError = document.getElementById('access-error');
+    const accessClear = document.getElementById('access-clear');
+    const accessReset = document.getElementById('access-reset');
     const observerActions = document.getElementById('observer-actions');
     const workerActions = document.getElementById('worker-actions');
     const actionCheckin = document.getElementById('action-checkin');
     const actionCheckout = document.getElementById('action-checkout');
+    const ACCESS_CODE_KEY = 'pixellab_access_code';
     const checkinCallbacks = { submit: null, cancel: null };
     const actionCallbacks = { checkin: null, status: null, checkout: null };
     const workspaceCallbacks = {
@@ -1047,6 +1086,88 @@
     let currentUserName = null;
     let messageLog = [];
     let editingTodoId = null;
+
+    const getStoredAccessCode = () => {
+      try {
+        return window.localStorage.getItem(ACCESS_CODE_KEY) || '';
+      } catch {
+        return '';
+      }
+    };
+
+    const setStoredAccessCode = code => {
+      try {
+        window.localStorage.setItem(ACCESS_CODE_KEY, code);
+      } catch {
+        // The in-memory retry still works if localStorage is unavailable.
+      }
+    };
+
+    const clearStoredAccessCode = () => {
+      try {
+        window.localStorage.removeItem(ACCESS_CODE_KEY);
+      } catch {
+        // localStorage may be disabled in a private or restricted browser.
+      }
+    };
+
+    const hideAccessModal = () => {
+      if (!accessModal) return;
+      accessModal.hidden = true;
+      accessCode.value = '';
+      accessError.textContent = '';
+    };
+
+    window.LabAccess = {
+      getStoredCode: getStoredAccessCode,
+      forgetCode({ reload = true } = {}) {
+        clearStoredAccessCode();
+        hideAccessModal();
+        if (reload) window.location.reload();
+      },
+      prompt({ message = '' } = {}) {
+        return new Promise(resolve => {
+          if (!accessModal || !accessForm || !accessCode || !accessError) {
+            resolve(getStoredAccessCode());
+            return;
+          }
+          accessError.textContent = message;
+          accessCode.value = '';
+          accessModal.hidden = false;
+          window.setTimeout(() => accessCode.focus(), 40);
+
+          const onSubmit = event => {
+            event.preventDefault();
+            const code = accessCode.value.trim();
+            if (!code) {
+              accessError.textContent = '접근 코드를 입력해주세요.';
+              return;
+            }
+            setStoredAccessCode(code);
+            hideAccessModal();
+            accessForm.removeEventListener('submit', onSubmit);
+            resolve(code);
+          };
+
+          accessForm.addEventListener('submit', onSubmit);
+        });
+      },
+      handleDenied() {
+        clearStoredAccessCode();
+        return this.prompt({ message: '코드를 다시 확인해주세요.' });
+      },
+    };
+
+    accessClear?.addEventListener('click', () => {
+      clearStoredAccessCode();
+      accessCode.value = '';
+      accessError.textContent = '저장된 코드가 삭제되었습니다.';
+      accessCode.focus();
+    });
+
+    accessReset?.addEventListener('click', () => {
+      window.LabAccess.forgetCode({ reload: true });
+    });
 
     const renderDirectTargets = () => {
       const select = document.getElementById('direct-target');

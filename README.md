@@ -93,13 +93,14 @@ Runtime settings:
 - `PIXELLAB_STORAGE=file` or unset: use local JSON files.
 - `PIXELLAB_STORAGE=firestore`: use Firestore for profiles, todos, notices, and recent direct-message history.
 - `PIXELLAB_FIRESTORE_COLLECTION=pixellab_state`: optional Firestore collection prefix; this is the recommended production value.
+- `PIXELLAB_ACCESS_CODE`: optional lab access code. When set, Socket.io clients must submit the matching code before entering the workspace. The browser stores the accepted code in `localStorage` so users do not need to re-enter it on every visit.
 
 Enable Firestore only after the Firestore database and Cloud Run runtime service-account access are confirmed:
 
 ```powershell
 gcloud run services update pixellab `
   --region asia-northeast3 `
-  --set-env-vars PIXELLAB_STORAGE=firestore,PIXELLAB_FIRESTORE_COLLECTION=pixellab_state
+  --set-env-vars PIXELLAB_STORAGE=firestore,PIXELLAB_FIRESTORE_COLLECTION=pixellab_state,PIXELLAB_ACCESS_CODE=<lab-code>
 ```
 
 Keep `--max-instances=1` until Firestore-backed state is verified on the deployed service and multi-instance presence/movement behavior is reviewed.

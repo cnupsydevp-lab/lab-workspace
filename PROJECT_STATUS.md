@@ -1,6 +1,6 @@
 # Lab Workspace Project Status
 
-Last updated: 2026-06-06
+Last updated: 2026-06-10
 
 ## Current Root
 
@@ -206,10 +206,13 @@ Collaboration rule: do not automatically commit or push changes in this project.
 - [x] Verify Firestore-backed notice and todo persistence on the deployed URL.
 - [x] Fix initial notice/todo visibility so existing items appear after page load without requiring a new notice/todo write.
 - [x] Prevent WASD character movement while typing English text in notices, todos, messages, or other panel fields.
+- [x] Add an optional lab access-code gate using `PIXELLAB_ACCESS_CODE`, Socket.io handshake auth, and browser `localStorage` for repeat visits.
 - [x] Verify Firestore-backed profile reuse after checkout/check-in.
 - [x] Verify direct-message restore after the recipient exits and re-enters with the same name.
+- [ ] Set `PIXELLAB_ACCESS_CODE` on Cloud Run after choosing the actual shared lab code.
+- [ ] Verify deployed access-code behavior with a fresh browser profile and with the saved-code repeat visit path.
 - [ ] After Firestore is enabled on Cloud Run and verified, consider relaxing `--max-instances=1`; keep it at 1 until movement/presence semantics are checked with multiple instances.
 
 ## Recommended Next Step
 
-Next, run a user-facing visual pass for the enlarged name tag/speech bubble and the restored todo date-picker on desktop and mobile. Keep Cloud Run `--max-instances=1` until multi-instance Socket.io presence/movement behavior is explicitly designed and tested.
+Next, choose the actual shared lab access code and set it on Cloud Run as `PIXELLAB_ACCESS_CODE`, then verify first entry, saved-code re-entry, and code reset from the panel. After that, run the remaining user-facing visual pass for the enlarged name tag/speech bubble and the restored todo date-picker on desktop and mobile. Keep Cloud Run `--max-instances=1` until multi-instance Socket.io presence/movement behavior is explicitly designed and tested.

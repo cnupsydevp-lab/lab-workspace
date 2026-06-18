@@ -238,9 +238,34 @@ class BootScene extends Phaser.Scene {
     this.tweens.add({ targets: dot, alpha: { from: 0.3, to: 1 }, duration: 520, yoyo: true, repeat: -1 });
 
     // 소켓 연결 시도
-    const socket = io();
-    socket.once('connect',       () => this.scene.start('Lab', { socket }));
-    socket.once('connect_error', () => {
+    this._connectSocket(dot);
+  }
+
+  _connectSocket(dot, retrying = false) {
+    const accessCode = window.LabAccess?.getStoredCode?.() || '';
+    const socket = io({
+      auth: accessCode ? { accessCode } : {},
+      reconnection: false,
+    });
+
+    socket.once('connect', () => this.scene.start('Lab', { socket }));
+    socket.once('connect_error', async err => {
+      socket.close();
+      if (err?.message === 'access_denied' && window.LabAccess?.prompt) {
+        try {
+          if (retrying && window.LabAccess.handleDenied) {
+            await window.LabAccess.handleDenied();
+          } else {
+            await window.LabAccess.prompt();
+          }
+          this._connectSocket(dot, true);
+        } catch {
+          dot.destroy();
+          $t(this, W / 2, H / 2 + 16, 'Access failed - reload', 8, '#cc4444').setOrigin(0.5);
+        }
+        return;
+      }
+
       dot.destroy();
       $t(this, W / 2, H / 2 + 16, '연결 실패 · 새로고침', 8, '#cc4444').setOrigin(0.5);
     });

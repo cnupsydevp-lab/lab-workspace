@@ -10,6 +10,7 @@ const DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'pixellab-smoke-'));
 const TODOS_FILE = path.join(DATA_DIR, 'todos.json');
 const NOTICES_FILE = path.join(DATA_DIR, 'notices.json');
 const MESSAGES_FILE = path.join(DATA_DIR, 'messages.json');
+const ACCESS_CODE = 'smoke-access';
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -62,8 +63,9 @@ function parsePackets(raw) {
 }
 
 class PollingClient {
-  constructor(label) {
+  constructor(label, accessCode = ACCESS_CODE) {
     this.label = label;
+    this.accessCode = accessCode;
     this.sid = null;
     this.events = [];
   }
@@ -72,7 +74,8 @@ class PollingClient {
     const openRaw = await (await fetch(`${BASE_IO}&t=${Date.now()}-${this.label}`)).text();
     const open = JSON.parse(openRaw.slice(1));
     this.sid = open.sid;
-    await this.post('40');
+    const auth = this.accessCode ? JSON.stringify({ accessCode: this.accessCode }) : '';
+    await this.post(`40${auth}`);
     await this.poll();
   }
 
@@ -132,7 +135,7 @@ async function main() {
 
   const server = spawn(process.execPath, ['server.js'], {
     cwd: path.join(__dirname, '..'),
-    env: { ...process.env, PORT: String(PORT), PIXELLAB_DATA_DIR: DATA_DIR },
+    env: { ...process.env, PORT: String(PORT), PIXELLAB_DATA_DIR: DATA_DIR, PIXELLAB_ACCESS_CODE: ACCESS_CODE },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });

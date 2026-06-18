@@ -18,8 +18,17 @@ const io = new Server(httpServer);
 
 const PORT = process.env.PORT || 8080;
 const DATA_DIR = process.env.PIXELLAB_DATA_DIR || path.join(__dirname, 'data');
+const ACCESS_CODE = String(process.env.PIXELLAB_ACCESS_CODE || '').trim();
 
 app.use(express.static(path.join(__dirname, 'public')));
+
+if (ACCESS_CODE) {
+  io.use((socket, next) => {
+    const submitted = String(socket.handshake.auth?.accessCode || '').trim();
+    if (submitted === ACCESS_CODE) return next();
+    return next(new Error('access_denied'));
+  });
+}
 
 const COLORS = [
   '#E05252',
