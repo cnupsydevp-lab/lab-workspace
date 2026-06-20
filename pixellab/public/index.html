@@ -622,6 +622,41 @@
       cursor: pointer;
     }
 
+    #workspace-feedback {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 80;
+      max-width: min(360px, calc(100vw - 32px));
+      border: 1px solid #5f8b65;
+      border-radius: 6px;
+      background: #203424;
+      color: #e8f4e9;
+      padding: 11px 14px;
+      font-family: var(--font-ui);
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.45;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+    }
+
+    #workspace-feedback[data-kind="error"] {
+      border-color: #a95752;
+      background: #472725;
+      color: #ffe8e5;
+    }
+
+    #workspace-feedback[hidden] {
+      display: none;
+    }
+
+    .panel-button:disabled,
+    .checkin-button:disabled,
+    .access-reset:disabled {
+      cursor: wait;
+      opacity: 0.55;
+    }
+
     #lab-action-bar {
       position: absolute;
       left: clamp(118px, 15vw, 150px);
@@ -939,6 +974,7 @@
       </div>
     </aside>
   </div>
+  <div id="workspace-feedback" hidden role="status" aria-live="polite"></div>
 
   <script>
     const statusMeta = {
@@ -1064,11 +1100,13 @@
     const accessError = document.getElementById('access-error');
     const accessClear = document.getElementById('access-clear');
     const accessReset = document.getElementById('access-reset');
+    const workspaceFeedback = document.getElementById('workspace-feedback');
     const observerActions = document.getElementById('observer-actions');
     const workerActions = document.getElementById('worker-actions');
     const actionCheckin = document.getElementById('action-checkin');
     const actionCheckout = document.getElementById('action-checkout');
     const ACCESS_CODE_KEY = 'pixellab_access_code';
+    const LAST_NICKNAME_KEY = 'pixellab_last_nickname';
     const checkinCallbacks = { submit: null, cancel: null };
     const actionCallbacks = { checkin: null, status: null, checkout: null };
     const workspaceCallbacks = {
@@ -1086,6 +1124,7 @@
     let currentUserName = null;
     let messageLog = [];
     let editingTodoId = null;
+    let feedbackTimer = null;
 
     const getStoredAccessCode = () => {
       try {
@@ -1108,6 +1147,54 @@
         window.localStorage.removeItem(ACCESS_CODE_KEY);
       } catch {
         // localStorage may be disabled in a private or restricted browser.
+      }
+    };
+
+    const getStoredNickname = () => {
+      try {
+        return window.localStorage.getItem(LAST_NICKNAME_KEY) || '';
+      } catch {
+        return '';
+      }
+    };
+
+    const setStoredNickname = name => {
+      try {
+        window.localStorage.setItem(LAST_NICKNAME_KEY, name);
+      } catch {
+        // Check-in still works if localStorage is unavailable.
+      }
+    };
+
+    const showFeedback = (message, { kind = 'success', duration = 2800 } = {}) => {
+      if (!workspaceFeedback || !message) return;
+      window.clearTimeout(feedbackTimer);
+      workspaceFeedback.textContent = message;
+      workspaceFeedback.dataset.kind = kind;
+      workspaceFeedback.hidden = false;
+      feedbackTimer = window.setTimeout(() => {
+        workspaceFeedback.hidden = true;
+      }, duration);
+    };
+
+    const runWorkspaceAction = async ({ action, button, successMessage, onSuccess, onError } = {}) => {
+      if (typeof action !== 'function') return false;
+      if (button) button.disabled = true;
+      try {
+        const pending = action();
+        if (!pending || typeof pending.then !== 'function') {
+          throw new Error('서버 연결을 준비 중입니다. 잠시 후 다시 시도해주세요.');
+        }
+        await pending;
+        onSuccess?.();
+        if (successMessage) showFeedback(successMessage);
+        return true;
+      } catch (err) {
+        onError?.();
+        showFeedback(err?.message || '작업을 완료하지 못했습니다.', { kind: 'error', duration: 4200 });
+        return false;
+      } finally {
+        if (button?.isConnected) button.disabled = false;
       }
     };
 
@@ -1166,6 +1253,7 @@
     });
 
     accessReset?.addEventListener('click', () => {
+      if (!window.confirm('저장된 접근 코드를 삭제하고 다시 입력할까요?')) return;
       window.LabAccess.forgetCode({ reload: true });
     });
 
@@ -1199,13 +1287,18 @@
         checkinCallbacks.submit = onSubmit;
         checkinCallbacks.cancel = onCancel;
         checkinError.textContent = '';
+        checkinName.value = getStoredNickname();
         checkinModal.hidden = false;
-        window.setTimeout(() => checkinName.focus(), 40);
+        window.setTimeout(() => {
+          checkinName.focus();
+          if (checkinName.value) checkinName.select();
+        }, 40);
       },
       closeCheckinModal,
       setCheckinError(message) {
         checkinError.textContent = message || '';
       },
+      showFeedback,
       bindActions({ onCheckin, onStatus, onCheckout } = {}) {
         actionCallbacks.checkin = onCheckin;
         actionCallbacks.status = onStatus;
@@ -1234,6 +1327,7 @@
       },
       setCurrentUser(name) {
         currentUserName = name;
+        if (name) setStoredNickname(name);
         renderDirectTargets();
         renderAttendanceTimer();
       },
@@ -1381,20 +1475,25 @@
 
           actions.append(save, cancel);
 
-          form.addEventListener('submit', event => {
+          form.addEventListener('submit', async event => {
             event.preventDefault();
             const text = textInput.value.trim();
             if (!text) {
               textInput.focus();
               return;
             }
-            workspaceCallbacks.todoUpdate?.({
+            const payload = {
               id: todo.id,
               text,
               owner: ownerInput.value.trim(),
               due: resolveDueValue(dueInputs.dateInput, dueInputs.textInput),
+            };
+            await runWorkspaceAction({
+              action: () => workspaceCallbacks.todoUpdate?.(payload),
+              button: save,
+              successMessage: '투두를 수정했습니다.',
+              onSuccess: () => { editingTodoId = null; },
             });
-            editingTodoId = null;
           });
 
           form.append(textInput, metaGrid, actions);
@@ -1407,8 +1506,15 @@
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.checked = Boolean(todo.done);
-        checkbox.addEventListener('change', () => {
-          workspaceCallbacks.todoToggle?.({ id: todo.id, done: checkbox.checked });
+        checkbox.addEventListener('change', async () => {
+          const previous = !checkbox.checked;
+          checkbox.disabled = true;
+          await runWorkspaceAction({
+            action: () => workspaceCallbacks.todoToggle?.({ id: todo.id, done: checkbox.checked }),
+            successMessage: checkbox.checked ? '투두를 완료했습니다.' : '투두를 다시 열었습니다.',
+            onError: () => { checkbox.checked = previous; },
+          });
+          if (checkbox.isConnected) checkbox.disabled = false;
         });
 
         const body = document.createElement('div');
@@ -1441,8 +1547,13 @@
         remove.type = 'button';
         remove.textContent = '×';
         remove.setAttribute('aria-label', `${todo.text} 삭제`);
-        remove.addEventListener('click', () => {
-          workspaceCallbacks.todoDelete?.({ id: todo.id });
+        remove.addEventListener('click', async () => {
+          if (!window.confirm(`"${todo.text}" 투두를 삭제하시겠습니까?`)) return;
+          await runWorkspaceAction({
+            action: () => workspaceCallbacks.todoDelete?.({ id: todo.id }),
+            button: remove,
+            successMessage: '투두를 삭제했습니다.',
+          });
         });
 
         actions.append(edit, remove);
@@ -1481,8 +1592,13 @@
         remove.type = 'button';
         remove.textContent = '×';
         remove.setAttribute('aria-label', `${notice.title || '공지'} 삭제`);
-        remove.addEventListener('click', () => {
-          workspaceCallbacks.noticeDelete?.({ id: notice.id });
+        remove.addEventListener('click', async () => {
+          if (!window.confirm(`"${notice.title || '공지'}" 공지를 삭제하시겠습니까?`)) return;
+          await runWorkspaceAction({
+            action: () => workspaceCallbacks.noticeDelete?.({ id: notice.id }),
+            button: remove,
+            successMessage: '공지를 삭제했습니다.',
+          });
         });
 
         row.append(title, body, meta, remove);
@@ -1518,27 +1634,39 @@
       }
     });
 
-    document.getElementById('bubble-form')?.addEventListener('submit', event => {
+    document.getElementById('bubble-form')?.addEventListener('submit', async event => {
       event.preventDefault();
       const input = document.getElementById('bubble-input');
       const message = input.value.trim();
       if (!message) return;
-      workspaceCallbacks.bubble?.(message);
-      input.value = '';
+      await runWorkspaceAction({
+        action: () => workspaceCallbacks.bubble?.(message),
+        button: event.submitter,
+        successMessage: '말풍선을 등록했습니다.',
+        onSuccess: () => { input.value = ''; },
+      });
     });
 
-    document.getElementById('bubble-clear')?.addEventListener('click', () => {
-      workspaceCallbacks.clearBubble?.();
+    document.getElementById('bubble-clear')?.addEventListener('click', async event => {
+      await runWorkspaceAction({
+        action: () => workspaceCallbacks.clearBubble?.(),
+        button: event.currentTarget,
+        successMessage: '말풍선을 지웠습니다.',
+      });
     });
 
-    document.getElementById('direct-form')?.addEventListener('submit', event => {
+    document.getElementById('direct-form')?.addEventListener('submit', async event => {
       event.preventDefault();
       const target = document.getElementById('direct-target');
       const message = document.getElementById('direct-message');
       const payload = { to: target.value, message: message.value.trim() };
       if (!payload.to || !payload.message) return;
-      workspaceCallbacks.directMessage?.(payload);
-      message.value = '';
+      await runWorkspaceAction({
+        action: () => workspaceCallbacks.directMessage?.(payload),
+        button: event.submitter,
+        successMessage: '메시지를 보냈습니다.',
+        onSuccess: () => { message.value = ''; },
+      });
     });
 
     const todoDueDate = document.getElementById('todo-due-date-input');
@@ -1550,21 +1678,28 @@
       if (todoDueText.value.trim()) todoDueDate.value = '';
     });
 
-    document.getElementById('todo-form')?.addEventListener('submit', event => {
+    document.getElementById('todo-form')?.addEventListener('submit', async event => {
       event.preventDefault();
       const input = document.getElementById('todo-input');
       const owner = document.getElementById('todo-owner-input');
       const text = input.value.trim();
       if (!text) return;
-      workspaceCallbacks.todoAdd?.({
+      const payload = {
         text,
         owner: owner.value.trim(),
         due: resolveDueValue(todoDueDate, todoDueText),
+      };
+      await runWorkspaceAction({
+        action: () => workspaceCallbacks.todoAdd?.(payload),
+        button: event.submitter,
+        successMessage: '투두를 등록했습니다.',
+        onSuccess: () => {
+          input.value = '';
+          owner.value = '';
+          todoDueDate.value = '';
+          todoDueText.value = '';
+        },
       });
-      input.value = '';
-      owner.value = '';
-      todoDueDate.value = '';
-      todoDueText.value = '';
     });
 
     window.addEventListener('lab:direct-message', event => {
@@ -1585,7 +1720,7 @@
       renderTodos(event.detail?.todos);
     });
 
-    document.getElementById('notice-form')?.addEventListener('submit', event => {
+    document.getElementById('notice-form')?.addEventListener('submit', async event => {
       event.preventDefault();
       const title = document.getElementById('notice-title-input');
       const body = document.getElementById('notice-body-input');
@@ -1594,9 +1729,15 @@
         body: body.value.trim(),
       };
       if (!payload.title && !payload.body) return;
-      workspaceCallbacks.noticeAdd?.(payload);
-      title.value = '';
-      body.value = '';
+      await runWorkspaceAction({
+        action: () => workspaceCallbacks.noticeAdd?.(payload),
+        button: event.submitter,
+        successMessage: '공지를 등록했습니다.',
+        onSuccess: () => {
+          title.value = '';
+          body.value = '';
+        },
+      });
     });
 
     window.addEventListener('lab:notices', event => {

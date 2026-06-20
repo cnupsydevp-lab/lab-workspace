@@ -50,6 +50,8 @@ const DESKS = [
 
 /** 책상 가로/세로 크기 (픽셀). */
 const DW = 186, DH = 54;
+const DESK_LEG_H = 22;
+const DESK_COLLISION_PAD = 3;
 
 /** 캐릭터 이동 속도 (px/초). */
 const SPEED = 180;
@@ -308,8 +310,10 @@ class LabScene extends Phaser.Scene {
     this._drawRoom();  // 연구실 배경 (벽, 바닥, 창문, 책장, 러그 등)
     this._drawDesks(); // 6개 책상 + 모니터/키보드/커피잔
     this._deskRects = DESKS.map(d => ({
-      l: d.x - DW / 2 - 8, r: d.x + DW / 2 + 8,
-      t: d.y - 8,           b: d.y + DH + 30,
+      l: d.x - DW / 2 - DESK_COLLISION_PAD,
+      r: d.x + DW / 2 + DESK_COLLISION_PAD,
+      t: d.y - DESK_COLLISION_PAD,
+      b: d.y + DH + DESK_LEG_H + DESK_COLLISION_PAD,
     }));
     this._buildUI();   // 하단 UI 바 (출근/퇴근/자리비움 버튼, 접속자 수)
 
@@ -676,8 +680,8 @@ class LabScene extends Phaser.Scene {
 
     // ── 다리 ──
     g.fillStyle(C.deskLeg);
-    g.fillRect(cx - DW / 2 + 7,  cy + DH, 10, 22);
-    g.fillRect(cx + DW / 2 - 17, cy + DH, 10, 22);
+    g.fillRect(cx - DW / 2 + 7,  cy + DH, 10, DESK_LEG_H);
+    g.fillRect(cx + DW / 2 - 17, cy + DH, 10, DESK_LEG_H);
 
     // ── 모니터 ──
     g.fillStyle(C.mon);  g.fillRect(cx - 24, cy - 44, 48, 36); // 프레임
@@ -792,8 +796,9 @@ class LabScene extends Phaser.Scene {
     // ── 말풍선 (그래픽스 기반, 기본 비표시) ──
     // msgG: 말풍선 배경 + 꼬리 그림
     // msgTxt: 메시지 텍스트
+    const bubbleBottom = tagBase - 10;
     const msgG   = this.add.graphics();
-    const msgTxt = this.add.text(0, -108, '', {
+    const msgTxt = this.add.text(0, bubbleBottom, '', {
       fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       fontSize: 13,
       fontStyle: '700',
@@ -805,7 +810,18 @@ class LabScene extends Phaser.Scene {
     }).setOrigin(0.5).setVisible(false);
     container.add([msgG, msgTxt]);
 
-    this.chars[user.name] = { container, g, tagG, nameTxt, timerTxt, msgG, msgTxt, sprite, charKey: reg ? reg.key : null };
+    this.chars[user.name] = {
+      container,
+      g,
+      tagG,
+      nameTxt,
+      timerTxt,
+      msgG,
+      msgTxt,
+      bubbleBottom,
+      sprite,
+      charKey: reg ? reg.key : null,
+    };
 
     // 초기 상태 적용
     this._applyStatus(user.name, user.status);
@@ -939,8 +955,8 @@ class LabScene extends Phaser.Scene {
     const paddingY = 9;
     const tw = Math.min(220, Math.max(72, c.msgTxt.width + paddingX * 2));
     const th = Math.max(34, c.msgTxt.height + paddingY * 2);
-    const top = -108 - th;
-    const bottom = -108;
+    const bottom = c.bubbleBottom ?? -108;
+    const top = bottom - th;
     c.msgTxt.setPosition(0, top + th / 2);
     c.msgG.clear();
     c.msgG.fillStyle(0xffffff, 0.98);
@@ -1013,6 +1029,25 @@ class LabScene extends Phaser.Scene {
   // ─── UI 바 ────────────────────────────────────────────────────────────────────
 
   /** 하단 UI 바를 만든다. 접속자 수 표시 + 출근/상태/퇴근 버튼. */
+  _emitWorkspace(event, payload) {
+    return new Promise((resolve, reject) => {
+      const callback = (err, result) => {
+        if (err) {
+          reject(new Error('서버 응답이 없습니다. 잠시 후 다시 시도해주세요.'));
+          return;
+        }
+        if (!result?.ok) {
+          reject(new Error(result?.message || '작업을 완료하지 못했습니다.'));
+          return;
+        }
+        resolve(result);
+      };
+      const emitter = this.socket.timeout(7000);
+      if (payload === undefined) emitter.emit(event, callback);
+      else emitter.emit(event, payload, callback);
+    });
+  }
+
   _buildUI() {
     const by = H - UI_H; // 바 상단 y 좌표
 
@@ -1062,15 +1097,15 @@ class LabScene extends Phaser.Scene {
       onCheckout: () => this._checkout(),
     });
     window.LabUI?.bindWorkspace?.({
-      onBubble: message => this.socket.emit('set_bubble', { message }),
-      onClearBubble: () => this.socket.emit('clear_bubble'),
-      onDirectMessage: payload => this.socket.emit('send_direct_message', payload),
-      onTodoAdd: payload => this.socket.emit('todo_add', payload),
-      onTodoToggle: payload => this.socket.emit('todo_toggle', payload),
-      onTodoUpdate: payload => this.socket.emit('todo_update', payload),
-      onTodoDelete: payload => this.socket.emit('todo_delete', payload),
-      onNoticeAdd: payload => this.socket.emit('notice_add', payload),
-      onNoticeDelete: payload => this.socket.emit('notice_delete', payload),
+      onBubble: message => this._emitWorkspace('set_bubble', { message }),
+      onClearBubble: () => this._emitWorkspace('clear_bubble'),
+      onDirectMessage: payload => this._emitWorkspace('send_direct_message', payload),
+      onTodoAdd: payload => this._emitWorkspace('todo_add', payload),
+      onTodoToggle: payload => this._emitWorkspace('todo_toggle', payload),
+      onTodoUpdate: payload => this._emitWorkspace('todo_update', payload),
+      onTodoDelete: payload => this._emitWorkspace('todo_delete', payload),
+      onNoticeAdd: payload => this._emitWorkspace('notice_add', payload),
+      onNoticeDelete: payload => this._emitWorkspace('notice_delete', payload),
     });
 
     this._setMode('observer'); // 초기: 관찰자 모드
@@ -1332,6 +1367,7 @@ class LabScene extends Phaser.Scene {
     }
     if (this._modal?.errTxt) this._modal.errTxt.setText(msg);
     if (this._modal?.external) window.LabUI?.setCheckinError?.(msg);
+    if (!this._modal) window.LabUI?.showFeedback?.(msg, { kind: 'error' });
   }
 
   /**

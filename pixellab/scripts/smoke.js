@@ -53,6 +53,13 @@ function parsePackets(raw) {
         const [event, payload] = JSON.parse(packet.slice(2));
         packets.push({ type: 'event', event, payload });
       }
+      if (packet.startsWith('43')) {
+        const match = packet.match(/^43(\d+)(.*)$/);
+        if (match) {
+          const payload = JSON.parse(match[2]);
+          packets.push({ type: 'ack', id: Number(match[1]), payload: payload[0] });
+        }
+      }
       if (next === -1) break;
       i = next + 1;
       continue;
@@ -68,6 +75,8 @@ class PollingClient {
     this.accessCode = accessCode;
     this.sid = null;
     this.events = [];
+    this.acks = new Map();
+    this.nextAckId = 1;
   }
 
   async connect() {
@@ -93,12 +102,30 @@ class PollingClient {
     await this.post(`42${JSON.stringify([event, payload])}`);
   }
 
+  async emitWithAck(event, payload, timeoutMs = 3000) {
+    const id = this.nextAckId++;
+    const args = payload === undefined ? [event] : [event, payload];
+    await this.post(`42${id}${JSON.stringify(args)}`);
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      if (this.acks.has(id)) {
+        const result = this.acks.get(id);
+        this.acks.delete(id);
+        return result;
+      }
+      await this.poll();
+      await wait(40);
+    }
+    throw new Error(`${this.label} timed out waiting for ack ${event}`);
+  }
+
   async poll() {
     const res = await fetch(`${BASE_IO}&sid=${encodeURIComponent(this.sid)}&t=${Date.now()}-${Math.random()}`);
     const raw = await res.text();
     const packets = parsePackets(raw);
     packets.forEach(packet => {
       if (packet.type === 'event') this.events.push(packet);
+      if (packet.type === 'ack') this.acks.set(packet.id, packet.payload);
     });
     return packets;
   }
@@ -165,10 +192,18 @@ async function main() {
     await a.emit('set_status', { status: 'meeting' });
     await a.waitFor('state_sync', users => users.some(user => user.name === 'SmokeA' && user.status === 'meeting'));
 
-    await a.emit('set_bubble', { message: 'smoke bubble' });
+    const bubbleAck = await a.emitWithAck('set_bubble', { message: 'smoke bubble' });
+    assert(bubbleAck?.ok === true, 'set_bubble ack failed');
     await b.waitFor('state_sync', users => users.some(user => user.name === 'SmokeA' && user.message === 'smoke bubble'));
+    b.events = [];
+    const clearBubbleAck = await a.emitWithAck('clear_bubble');
+    assert(clearBubbleAck?.ok === true, 'clear_bubble ack failed');
+    await b.waitFor('state_sync', users => users.some(user => user.name === 'SmokeA' && !user.message));
 
-    await a.emit('send_direct_message', { to: 'SmokeB', message: 'hello smoke' });
+    const missingTargetAck = await a.emitWithAck('send_direct_message', { to: 'Missing', message: 'should fail' });
+    assert(missingTargetAck?.ok === false, 'missing direct-message target should fail');
+    const directAck = await a.emitWithAck('send_direct_message', { to: 'SmokeB', message: 'hello smoke' });
+    assert(directAck?.ok === true, 'send_direct_message ack failed');
     await b.waitFor('direct_message', msg => msg.from === 'SmokeA' && msg.message === 'hello smoke');
 
     await b.emit('check_out');
@@ -181,25 +216,31 @@ async function main() {
       messages.some(msg => msg.from === 'SmokeA' && msg.to === 'SmokeB' && msg.message === 'hello smoke')
     );
 
-    await a.emit('todo_add', { text: 'Smoke todo', owner: 'SmokeA', due: '2026-06-03' });
+    const todoAddAck = await a.emitWithAck('todo_add', { text: 'Smoke todo', owner: 'SmokeA', due: '2026-06-03' });
+    assert(todoAddAck?.ok === true, 'todo_add ack failed');
     const todos = await a.waitFor('todos_sync', items => items.some(item => item.text === 'Smoke todo'));
     const todo = todos.find(item => item.text === 'Smoke todo');
-    await a.emit('todo_toggle', { id: todo.id, done: true });
+    const todoToggleAck = await a.emitWithAck('todo_toggle', { id: todo.id, done: true });
+    assert(todoToggleAck?.ok === true, 'todo_toggle ack failed');
     await a.waitFor('todos_sync', items => items.some(item => item.id === todo.id && item.done === true));
-    await a.emit('todo_update', { id: todo.id, text: 'Smoke todo edited', owner: 'Smoke team', due: '오늘' });
+    const todoUpdateAck = await a.emitWithAck('todo_update', { id: todo.id, text: 'Smoke todo edited', owner: 'Smoke team', due: '오늘' });
+    assert(todoUpdateAck?.ok === true, 'todo_update ack failed');
     await a.waitFor('todos_sync', items => items.some(item =>
       item.id === todo.id &&
       item.text === 'Smoke todo edited' &&
       item.owner === 'Smoke team' &&
       item.due === '오늘'
     ));
-    await a.emit('todo_delete', { id: todo.id });
+    const todoDeleteAck = await a.emitWithAck('todo_delete', { id: todo.id });
+    assert(todoDeleteAck?.ok === true, 'todo_delete ack failed');
     await a.waitFor('todos_sync', items => !items.some(item => item.id === todo.id));
 
-    await a.emit('notice_add', { title: 'Smoke notice', body: 'notice body' });
+    const noticeAddAck = await a.emitWithAck('notice_add', { title: 'Smoke notice', body: 'notice body' });
+    assert(noticeAddAck?.ok === true, 'notice_add ack failed');
     const notices = await a.waitFor('notices_sync', items => items.some(item => item.title === 'Smoke notice'));
     const notice = notices.find(item => item.title === 'Smoke notice');
-    await a.emit('notice_delete', { id: notice.id });
+    const noticeDeleteAck = await a.emitWithAck('notice_delete', { id: notice.id });
+    assert(noticeDeleteAck?.ok === true, 'notice_delete ack failed');
     await a.waitFor('notices_sync', items => !items.some(item => item.id === notice.id));
 
     await a.emit('check_out');

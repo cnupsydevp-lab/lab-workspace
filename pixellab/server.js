@@ -209,14 +209,23 @@ function recentMessagesFor(name) {
 }
 
 async function saveDirectMessage(message) {
-  directMessages.push(message);
-  directMessages = directMessages.slice(-200);
-  await storage.appendMessage(directMessages, message);
+  const nextMessages = [...directMessages, message].slice(-200);
+  await storage.appendMessage(nextMessages, message);
+  directMessages = nextMessages;
 }
 
-function handleSocketError(socket, err) {
+function acknowledge(ack, result) {
+  if (typeof ack === 'function') ack(result);
+}
+
+function rejectAction(socket, ack, message) {
+  socket.emit('lab_error', message);
+  acknowledge(ack, { ok: false, message });
+}
+
+function handleSocketError(socket, err, ack) {
   console.error(err);
-  socket.emit('lab_error', 'Storage operation failed. Please try again.');
+  rejectAction(socket, ack, '저장하지 못했습니다. 잠시 후 다시 시도해주세요.');
 }
 
 io.on('connection', (socket) => {
@@ -314,22 +323,31 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('set_bubble', ({ message }) => {
+  socket.on('set_bubble', ({ message } = {}, ack) => {
     const user = users[socket.id];
-    if (!user || !message) return;
+    const text = cleanText(message, 32);
+    if (!user || !text) {
+      rejectAction(socket, ack, '출근 후 말풍선을 등록해주세요.');
+      return;
+    }
 
     if (user.msgTimer) clearTimeout(user.msgTimer);
 
-    user.message = cleanText(message, 32);
+    user.message = text;
     io.emit('state_sync', snapshot());
+    acknowledge(ack, { ok: true });
   });
 
-  socket.on('clear_bubble', () => {
+  socket.on('clear_bubble', (ack) => {
     const user = users[socket.id];
-    if (!user) return;
+    if (!user) {
+      rejectAction(socket, ack, '출근 후 말풍선을 변경해주세요.');
+      return;
+    }
     if (user.msgTimer) clearTimeout(user.msgTimer);
     user.message = null;
     io.emit('state_sync', snapshot());
+    acknowledge(ack, { ok: true });
   });
 
   socket.on('send_message', ({ message }) => {
@@ -357,16 +375,19 @@ io.on('connection', (socket) => {
     socket.broadcast.emit('player_move', { name: user.name, x, y });
   });
 
-  socket.on('send_direct_message', async ({ to, message }) => {
+  socket.on('send_direct_message', async ({ to, message } = {}, ack) => {
     try {
     const fromUser = users[socket.id];
     const text = cleanText(message, 160);
     const targetName = cleanName(to);
-    if (!fromUser || !targetName || !text) return;
+    if (!fromUser || !targetName || !text) {
+      rejectAction(socket, ack, '출근자와 메시지 내용을 확인해주세요.');
+      return;
+    }
 
     const target = findUserByName(targetName);
     if (!target) {
-      socket.emit('lab_error', '메시지를 보낼 상대가 출근 중이 아니에요');
+      rejectAction(socket, ack, '메시지를 보낼 상대가 출근 중이 아니에요.');
       return;
     }
 
@@ -381,104 +402,139 @@ io.on('connection', (socket) => {
     await saveDirectMessage(payload);
     socket.emit('direct_message', { ...payload, direction: 'sent' });
     io.to(targetSocketId).emit('direct_message', { ...payload, direction: 'received' });
+    acknowledge(ack, { ok: true });
     } catch (err) {
-      handleSocketError(socket, err);
+      handleSocketError(socket, err, ack);
     }
   });
 
-  socket.on('todo_add', async ({ text, owner, due }) => {
+  socket.on('todo_add', async ({ text, owner, due } = {}, ack) => {
     try {
     const user = users[socket.id];
     const clean = cleanText(text, 100);
-    if (!clean) return;
+    if (!clean) {
+      rejectAction(socket, ack, '투두 내용을 입력해주세요.');
+      return;
+    }
 
-    todos.unshift({
+    const nextTodos = [{
       id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
       text: clean,
       owner: cleanText(owner, 24) || user?.name || '랩 공통',
       due: cleanText(due, 20),
       done: false,
       createdAt: new Date().toISOString(),
-    });
-    await storage.saveTodos(todos);
+    }, ...todos];
+    await storage.saveTodos(nextTodos);
+    todos = nextTodos;
     publishTodos();
+    acknowledge(ack, { ok: true });
     } catch (err) {
-      handleSocketError(socket, err);
+      handleSocketError(socket, err, ack);
     }
   });
 
-  socket.on('notice_add', async ({ title, body }) => {
+  socket.on('notice_add', async ({ title, body } = {}, ack) => {
     try {
     const user = users[socket.id];
     const cleanTitle = cleanText(title, 60);
     const cleanBody = cleanText(body, 240);
-    if (!cleanTitle && !cleanBody) return;
+    if (!cleanTitle && !cleanBody) {
+      rejectAction(socket, ack, '공지 제목이나 내용을 입력해주세요.');
+      return;
+    }
 
-    notices.unshift({
+    const nextNotices = [{
       id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
       title: cleanTitle || '공지',
       body: cleanBody,
       author: user?.name ?? '랩 공통',
       createdAt: new Date().toISOString(),
-    });
-    await storage.saveNotices(notices);
+    }, ...notices];
+    await storage.saveNotices(nextNotices);
+    notices = nextNotices;
     publishNotices();
+    acknowledge(ack, { ok: true });
     } catch (err) {
-      handleSocketError(socket, err);
+      handleSocketError(socket, err, ack);
     }
   });
 
-  socket.on('notice_delete', async ({ id }) => {
+  socket.on('notice_delete', async ({ id } = {}, ack) => {
     try {
-    const before = notices.length;
-    notices = notices.filter(item => item.id !== id);
-    if (notices.length === before) return;
-    await storage.saveNotices(notices);
+    const nextNotices = notices.filter(item => item.id !== id);
+    if (nextNotices.length === notices.length) {
+      rejectAction(socket, ack, '삭제할 공지를 찾지 못했습니다.');
+      return;
+    }
+    await storage.saveNotices(nextNotices);
+    notices = nextNotices;
     publishNotices();
+    acknowledge(ack, { ok: true });
     } catch (err) {
-      handleSocketError(socket, err);
+      handleSocketError(socket, err, ack);
     }
   });
 
-  socket.on('todo_toggle', async ({ id, done }) => {
+  socket.on('todo_toggle', async ({ id, done } = {}, ack) => {
     try {
-    const todo = todos.find(item => item.id === id);
-    if (!todo) return;
-    todo.done = Boolean(done);
-    todo.updatedAt = new Date().toISOString();
-    await storage.saveTodos(todos);
+    const index = todos.findIndex(item => item.id === id);
+    if (index === -1) {
+      rejectAction(socket, ack, '변경할 투두를 찾지 못했습니다.');
+      return;
+    }
+    const nextTodos = todos.map((item, itemIndex) => itemIndex === index ? {
+      ...item,
+      done: Boolean(done),
+      updatedAt: new Date().toISOString(),
+    } : item);
+    await storage.saveTodos(nextTodos);
+    todos = nextTodos;
+    acknowledge(ack, { ok: true });
     publishTodos();
     } catch (err) {
-      handleSocketError(socket, err);
+      handleSocketError(socket, err, ack);
     }
   });
 
-  socket.on('todo_update', async ({ id, text, owner, due }) => {
+  socket.on('todo_update', async ({ id, text, owner, due } = {}, ack) => {
     try {
-    const todo = todos.find(item => item.id === id);
+    const index = todos.findIndex(item => item.id === id);
     const clean = cleanText(text, 100);
-    if (!todo || !clean) return;
+    if (index === -1 || !clean) {
+      rejectAction(socket, ack, '수정할 투두와 내용을 확인해주세요.');
+      return;
+    }
 
-    todo.text = clean;
-    todo.owner = cleanText(owner, 24) || '랩 공통';
-    todo.due = cleanText(due, 24);
-    todo.updatedAt = new Date().toISOString();
-    await storage.saveTodos(todos);
+    const nextTodos = todos.map((item, itemIndex) => itemIndex === index ? {
+      ...item,
+      text: clean,
+      owner: cleanText(owner, 24) || '랩 공통',
+      due: cleanText(due, 24),
+      updatedAt: new Date().toISOString(),
+    } : item);
+    await storage.saveTodos(nextTodos);
+    todos = nextTodos;
+    acknowledge(ack, { ok: true });
     publishTodos();
     } catch (err) {
-      handleSocketError(socket, err);
+      handleSocketError(socket, err, ack);
     }
   });
 
-  socket.on('todo_delete', async ({ id }) => {
+  socket.on('todo_delete', async ({ id } = {}, ack) => {
     try {
-    const before = todos.length;
-    todos = todos.filter(item => item.id !== id);
-    if (todos.length === before) return;
-    await storage.saveTodos(todos);
+    const nextTodos = todos.filter(item => item.id !== id);
+    if (nextTodos.length === todos.length) {
+      rejectAction(socket, ack, '삭제할 투두를 찾지 못했습니다.');
+      return;
+    }
+    await storage.saveTodos(nextTodos);
+    todos = nextTodos;
     publishTodos();
+    acknowledge(ack, { ok: true });
     } catch (err) {
-      handleSocketError(socket, err);
+      handleSocketError(socket, err, ack);
     }
   });
 

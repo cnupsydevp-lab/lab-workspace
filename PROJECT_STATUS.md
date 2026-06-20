@@ -1,6 +1,6 @@
 # Lab Workspace Project Status
 
-Last updated: 2026-06-10
+Last updated: 2026-06-20
 
 ## Current Root
 
@@ -192,8 +192,8 @@ Collaboration rule: do not automatically commit or push changes in this project.
 - [x] After manual browser review, decide whether to drop the retained safety stash.
 - [x] Decide whether the current local changes should be committed as one collaboration-ready checkpoint or split into UI, server events, and docs/test commits.
 - [x] Add a lightweight smoke-test command or script if this repo will be maintained by multiple agents/users.
-- [ ] User-facing visual pass for the enlarged name tag and speech bubble after the latest alignment adjustment.
-- [ ] Optional external-browser visual pass for exact desk collision edge cases near table boundaries.
+- [ ] User-facing visual pass for the enlarged name tag and speech bubble after the latest alignment adjustment; local code now anchors each bubble above its character-specific name-tag position.
+- [ ] Verify the tightened desk collision edge after deployment; local code now uses a 3px visual margin instead of the previous 8px margin and matches the rendered 22px desk-leg height.
 - [x] Confirm deployment target and whether Cloud Run assumptions in comments are current.
 - [x] Restore or redesign todo due-date input as a calendar/date-picker UX while keeping shorthand text entry.
 - [x] Add Cloud Build automatic deployment config from `main` push after smoke checks are part of the build.
@@ -209,10 +209,22 @@ Collaboration rule: do not automatically commit or push changes in this project.
 - [x] Add an optional lab access-code gate using `PIXELLAB_ACCESS_CODE`, Socket.io handshake auth, and browser `localStorage` for repeat visits.
 - [x] Verify Firestore-backed profile reuse after checkout/check-in.
 - [x] Verify direct-message restore after the recipient exits and re-enters with the same name.
-- [ ] Set `PIXELLAB_ACCESS_CODE` on Cloud Run after choosing the actual shared lab code.
-- [ ] Verify deployed access-code behavior with a fresh browser profile and with the saved-code repeat visit path.
+- [x] Set `PIXELLAB_ACCESS_CODE` on Cloud Run after choosing the temporary shared lab code; do not record the code itself in the repository.
+- [x] Verify deployed access-code behavior: wrong-code handshake rejection, successful entry, saved-code reload, and access-code reset all worked without console errors.
+- [x] Confirm the deployed `5b68fef` frontend after an initially stale browser-root response; direct HTTP and a cache-busted `/index.html` both contained `#access-modal` and `#access-reset`.
+- [ ] Add a lightweight deployed-version signal (for example, a health/version endpoint or visible build revision) so stale Cloud Run revisions can be identified without inspecting source HTML.
+- [x] Run a two-user real-use UX pass covering access, check-in, status changes, notices, todos, direct messages, checkout, and re-entry; user confirmed simultaneous use works.
+- [ ] Review mobile input and layout behavior while the on-screen keyboard is open, especially access code, check-in, notice, message, and todo forms.
+- [x] Show `lab_error` globally outside the check-in modal so Firestore or message failures are visible to active users.
+- [x] Add operation acknowledgements for notice, todo, bubble, and direct-message writes; keep form text until the server confirms success.
+- [x] Remember the last successful nickname in `localStorage` and prefill it without automatically checking in.
+- [x] Add confirmation for destructive or disruptive actions such as access-code reset and notice/todo deletion.
+- [x] Confirm the notice/todo permission policy: every admitted lab user may create and delete shared notices and todos; deletion requires a `삭제하시겠습니까?` confirmation.
+- [ ] Verify acknowledgement feedback, retained form text on failure, confirmations, and nickname prefill after deployment.
+- [ ] Reassess whether deleted notices/todos need a temporary recovery bin after observing real-use accidental deletion; if needed, implement Firestore soft deletion with a retention period.
+- [ ] Prioritize and fix the top three friction points found in the real-user pass before adding more features.
 - [ ] After Firestore is enabled on Cloud Run and verified, consider relaxing `--max-instances=1`; keep it at 1 until movement/presence semantics are checked with multiple instances.
 
 ## Recommended Next Step
 
-Next, choose the actual shared lab access code and set it on Cloud Run as `PIXELLAB_ACCESS_CODE`, then verify first entry, saved-code re-entry, and code reset from the panel. After that, run the remaining user-facing visual pass for the enlarged name tag/speech bubble and the restored todo date-picker on desktop and mobile. Keep Cloud Run `--max-instances=1` until multi-instance Socket.io presence/movement behavior is explicitly designed and tested.
+Next, deploy and verify the name-tag/speech-bubble alignment, tightened desk collision edge, write-operation feedback, confirmations, and nickname prefill in normal desktop use. Mobile keyboard/layout QA remains user-owned for now. Keep Cloud Run `--max-instances=1` until multi-instance Socket.io presence/movement behavior is explicitly designed and tested.
