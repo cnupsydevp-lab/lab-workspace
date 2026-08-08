@@ -154,6 +154,7 @@ No `AGENTS.md`, `AI_HANDOFF.md`, or `WORKING_SUMMARY.md` file currently exists i
 - [x] Added mobile keyboard-safe layout rules: check-in/access modals use the viewport on narrow screens, compact-height dialogs can scroll, and panel inputs reserve scroll margin and bottom space around the on-screen keyboard.
 - [x] Browser-checked the local mobile layout at `390x844` and compact `390x520`: the canvas stayed at `370x247`, the modal stayed inside the viewport, and a focused notice textarea remained visible after panel scrolling.
 - [x] Browser-checked nickname prefill locally after checkout/re-entry; deployed initial check-in and persistent profile behavior remain verified, while the new revision should receive one final deployed prefill check.
+- [x] Verified the new deployed revision at compact mobile viewport `390x520`: the check-in/access modal uses `fixed` positioning, the dialog remains scrollable, inputs keep `140px` scroll margin, and the canvas/panel remain separated.
 
 ## Current Git State
 
