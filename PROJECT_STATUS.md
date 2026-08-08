@@ -1,12 +1,13 @@
 # Lab Workspace Project Status
 
-Last updated: 2026-06-20
+Last updated: 2026-08-08
 
 ## Current Root
 
 - Active local root: `D:\CodexCodeProj\LabWorkspace`
 - Repository: `https://github.com/cnupsydevp-lab/lab-workspace.git`
 - Branch: `main`
+- Latest repository checkpoint: `e54db55 feat: improve shared workspace feedback`
 - Latest app/deploy config checkpoint: `12ce7c3 ci: use cloud logging for cloud build`
 - Automatic deployment success recorded in docs after user-confirmed Cloud Build trigger run.
 - Main app: `pixellab`
@@ -23,7 +24,7 @@ This status was refreshed from the current folder after the project folder move.
 - `pixellab/package.json`: app metadata and `start`/`dev` scripts.
 - `pixellab/package-lock.json`: reproducible npm dependency lockfile; needed by the Dockerfile because it uses `npm ci`.
 - `pixellab/scripts/smoke.js`: lightweight Socket.io smoke test for presence, bubble, direct-message, todo, and notice events.
-- `pixellab/server.js`: Express + Socket.io server, in-memory session state plus lightweight profile and todo persistence.
+- `pixellab/server.js`: Express + Socket.io server, in-memory presence state with file/Firestore-backed profiles, todos, notices, and recent direct messages.
 - `pixellab/public/index.html`: browser entry page, responsive app shell, and real-time workspace panel.
 - `pixellab/public/game.js`: Phaser client UI, real-time lab scene logic, and panel state event bridge.
 - `pixellab/Dockerfile`: Node 20 Alpine container build.
@@ -36,7 +37,7 @@ No `AGENTS.md`, `AI_HANDOFF.md`, or `WORKING_SUMMARY.md` file currently exists i
 
 - [x] Located the active project at `D:\CodexCodeProj\LabWorkspace`.
 - [x] Confirmed Git top-level path matches the active project root.
-- [x] Checked Git status: branch `main`, tracking `origin/main`, with local untracked setup/status files.
+- [x] Checked Git status: branch `main`, tracking `origin/main`, clean worktree at `e54db55`.
 - [x] Reviewed current status documents and confirmed `PROJECT_STATUS.md` is the only detailed handoff/status file.
 - [x] Searched code, config, and documents for stale local absolute paths.
 - [x] Confirmed the only absolute path references found by search are the current active root references in this status document.
@@ -151,11 +152,9 @@ No `AGENTS.md`, `AI_HANDOFF.md`, or `WORKING_SUMMARY.md` file currently exists i
 
 ## Current Git State
 
-Before this automatic-deployment success note, local `main` was aligned with `origin/main` at `12ce7c3`.
-
-Current documentation update scope:
-
-- Modified: `PROJECT_STATUS.md`
+- Local `main` and `origin/main` are aligned at `e54db55 feat: improve shared workspace feedback`.
+- The working tree is clean after the latest user-requested commit and push.
+- `git stash list` is empty; the old pre-pull safety stash was reviewed and dropped.
 
 `pixellab/node_modules/` exists locally after dependency installation and is ignored by `.gitignore`.
 
@@ -174,7 +173,7 @@ Collaboration rule: do not automatically commit or push changes in this project.
 - `Start-Process -Environment` is not available in the observed PowerShell version; set `$env:PORT` before `Start-Process` when launching an alternate local port.
 - Runtime profile data is stored under `pixellab/data/`, which is intentionally ignored by Git.
 - First manual Cloud Run deployment is live at `https://pixellab-922543866704.asia-northeast3.run.app`.
-- Cloud Run local filesystem is ephemeral. Current file-backed JSON data under `pixellab/data/` is acceptable for MVP testing, but not for durable research-lab operation.
+- Cloud Run local filesystem is ephemeral. Local development uses file-backed JSON, while the deployed service is configured by the user to use Firestore for durable operational data.
 
 ## Remaining Work
 
@@ -227,4 +226,4 @@ Collaboration rule: do not automatically commit or push changes in this project.
 
 ## Recommended Next Step
 
-Next, deploy and verify the name-tag/speech-bubble alignment, tightened desk collision edge, write-operation feedback, confirmations, and nickname prefill in normal desktop use. Mobile keyboard/layout QA remains user-owned for now. Keep Cloud Run `--max-instances=1` until multi-instance Socket.io presence/movement behavior is explicitly designed and tested.
+Next, verify the latest deployed revision in normal desktop use: name-tag/speech-bubble alignment, tightened desk collision edge, write-operation feedback, confirmations, and nickname prefill. Then perform mobile keyboard/layout QA. Keep Cloud Run `--max-instances=1` until multi-instance Socket.io presence/movement behavior is explicitly designed and tested.
