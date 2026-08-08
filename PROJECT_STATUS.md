@@ -7,7 +7,7 @@ Last updated: 2026-08-08
 - Active local root: `D:\CodexCodeProj\LabWorkspace`
 - Repository: `https://github.com/cnupsydevp-lab/lab-workspace.git`
 - Branch: `main`
-- Latest repository checkpoint: `e54db55 feat: improve shared workspace feedback`
+- Latest repository checkpoint: `fefaa2b fix: harden mobile input layout`
 - Latest app/deploy config checkpoint: `12ce7c3 ci: use cloud logging for cloud build`
 - Automatic deployment success recorded in docs after user-confirmed Cloud Build trigger run.
 - Main app: `pixellab`
@@ -149,11 +149,16 @@ No `AGENTS.md`, `AI_HANDOFF.md`, or `WORKING_SUMMARY.md` file currently exists i
 - [x] Reviewed and dropped the old pre-pull safety stash `stash@{0}: codex-local-work-before-pull-20260602`; it was based on the older `ff0b1c5` state and is superseded by current `main`.
 - [x] Verified Firestore-backed profile reuse on the deployed Cloud Run URL: QA user `Pl803d` kept color `#A052E0` and preferred desk `0` after checkout and same-name re-entry.
 - [x] Verified Firestore-backed direct-message restore on the deployed Cloud Run URL: QA sender `Al803d` sent `qa-l803d` to `Bl803d`, and the message restored after `Bl803d` checked out and re-entered with the same name.
+- [x] Rechecked the deployed desktop workspace after the shared-feedback update: seeded notices/todos loaded on first access, the responsive canvas/panel geometry matched the intended desktop layout, and bubble/notice write feedback displayed successfully.
+- [x] Rechecked destructive-action behavior on the deployed workspace: the notice delete confirmation opened, the temporary `QA 확인` item was not left in the shared notice list, and the normal notice list remained intact.
+- [x] Added mobile keyboard-safe layout rules: check-in/access modals use the viewport on narrow screens, compact-height dialogs can scroll, and panel inputs reserve scroll margin and bottom space around the on-screen keyboard.
+- [x] Browser-checked the local mobile layout at `390x844` and compact `390x520`: the canvas stayed at `370x247`, the modal stayed inside the viewport, and a focused notice textarea remained visible after panel scrolling.
+- [x] Browser-checked nickname prefill locally after checkout/re-entry; deployed initial check-in and persistent profile behavior remain verified, while the new revision should receive one final deployed prefill check.
 
 ## Current Git State
 
-- Local `main` and `origin/main` are aligned at `e54db55 feat: improve shared workspace feedback`.
-- The working tree is clean after the latest user-requested commit and push.
+- Local `main` and `origin/main` are aligned at `fefaa2b fix: harden mobile input layout`.
+- The working tree is clean after the latest implementation commit and push.
 - `git stash list` is empty; the old pre-pull safety stash was reviewed and dropped.
 
 `pixellab/node_modules/` exists locally after dependency installation and is ignored by `.gitignore`.
@@ -191,7 +196,7 @@ Collaboration rule: do not automatically commit or push changes in this project.
 - [x] After manual browser review, decide whether to drop the retained safety stash.
 - [x] Decide whether the current local changes should be committed as one collaboration-ready checkpoint or split into UI, server events, and docs/test commits.
 - [x] Add a lightweight smoke-test command or script if this repo will be maintained by multiple agents/users.
-- [ ] User-facing visual pass for the enlarged name tag and speech bubble after the latest alignment adjustment; local code now anchors each bubble above its character-specific name-tag position.
+- [ ] User-facing visual pass for the enlarged name tag and speech bubble after the latest alignment adjustment; desktop DOM/geometry checks passed, but screenshot-level visual confirmation remains.
 - [ ] Verify the tightened desk collision edge after deployment; local code now uses a 3px visual margin instead of the previous 8px margin and matches the rendered 22px desk-leg height.
 - [x] Confirm deployment target and whether Cloud Run assumptions in comments are current.
 - [x] Restore or redesign todo due-date input as a calendar/date-picker UX while keeping shorthand text entry.
@@ -213,13 +218,13 @@ Collaboration rule: do not automatically commit or push changes in this project.
 - [x] Confirm the deployed `5b68fef` frontend after an initially stale browser-root response; direct HTTP and a cache-busted `/index.html` both contained `#access-modal` and `#access-reset`.
 - [ ] Add a lightweight deployed-version signal (for example, a health/version endpoint or visible build revision) so stale Cloud Run revisions can be identified without inspecting source HTML.
 - [x] Run a two-user real-use UX pass covering access, check-in, status changes, notices, todos, direct messages, checkout, and re-entry; user confirmed simultaneous use works.
-- [ ] Review mobile input and layout behavior while the on-screen keyboard is open, especially access code, check-in, notice, message, and todo forms.
+- [ ] Review mobile input and layout behavior on a physical/mobile browser while the on-screen keyboard is open; local `390x844`/`390x520` viewport checks passed for access/check-in/notice input behavior.
 - [x] Show `lab_error` globally outside the check-in modal so Firestore or message failures are visible to active users.
 - [x] Add operation acknowledgements for notice, todo, bubble, and direct-message writes; keep form text until the server confirms success.
 - [x] Remember the last successful nickname in `localStorage` and prefill it without automatically checking in.
 - [x] Add confirmation for destructive or disruptive actions such as access-code reset and notice/todo deletion.
 - [x] Confirm the notice/todo permission policy: every admitted lab user may create and delete shared notices and todos; deletion requires a `삭제하시겠습니까?` confirmation.
-- [ ] Verify acknowledgement feedback, retained form text on failure, confirmations, and nickname prefill after deployment.
+- [ ] Verify the new deployed revision's full acknowledgement/retained-text/confirmation/nickname-prefill pass; notice and bubble acknowledgements plus deletion confirmation are already verified on the previous deployed revision, and nickname prefill is verified locally.
 - [ ] Reassess whether deleted notices/todos need a temporary recovery bin after observing real-use accidental deletion; if needed, implement Firestore soft deletion with a retention period.
 - [ ] Prioritize and fix the top three friction points found in the real-user pass before adding more features.
 - [ ] After Firestore is enabled on Cloud Run and verified, consider relaxing `--max-instances=1`; keep it at 1 until movement/presence semantics are checked with multiple instances.
